@@ -3,15 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<meta name="theme-color" content="#0b3d20">
+<meta name="theme-color" content="#1a2f92">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="crest.png" type="image/png">
 <title>Bytteplan · Bjerke IL J8/J9</title>
 <style>
+  /* Bjerke IL: klubbblå #1a2f92, rød #de1420, gul #f6d31c (fra klubbemblemet) */
   :root{
-    --bg:#0e1512; --card:#16211b; --card2:#1c2a22; --line:#2a3d31;
-    --text:#eef5f0; --dim:#8fa598; --green:#38c172; --green-dk:#0b3d20;
-    --amber:#f0b429; --red:#e5484d; --blue:#5aa9e6;
+    --bg:#0a0f22; --card:#121a36; --card2:#1a2448; --line:#2c3a6b;
+    --text:#eef1fa; --dim:#95a1c7; --green:#f6d31c; --green-dk:#1a2f92;
+    --amber:#f0b429; --red:#de1420; --blue:#5aa9e6; --ink:#131a3a;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   html,body{margin:0; padding:0; background:var(--bg); color:var(--text);
@@ -23,14 +24,14 @@
     padding-top:calc(10px + env(safe-area-inset-top))}
   header .logo{font-size:20px}
   header h1{font-size:16px; margin:0; font-weight:700; letter-spacing:.3px}
-  header .sub{font-size:11px; color:#a8d5b8; margin:0}
+  header .sub{font-size:11px; color:#b9c6f2; margin:0}
   main{padding:12px; max-width:560px; margin:0 auto}
   h2{font-size:14px; text-transform:uppercase; letter-spacing:.8px; color:var(--dim); margin:18px 0 8px}
   .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:12px}
   button{font:inherit; border:0; border-radius:12px; padding:12px 16px; font-weight:700;
     background:var(--card2); color:var(--text); cursor:pointer; touch-action:manipulation}
   button:active{transform:scale(.97)}
-  button.primary{background:var(--green); color:#06130b}
+  button.primary{background:var(--green); color:var(--ink)}
   button.warn{background:var(--red); color:#fff}
   button.ghost{background:transparent; border:1px solid var(--line); color:var(--dim); font-weight:600}
   button.big{width:100%; padding:16px; font-size:17px}
@@ -40,7 +41,7 @@
   input[type=text],input[type=number],select{font:inherit; background:var(--card2); color:var(--text);
     border:1px solid var(--line); border-radius:10px; padding:11px 12px; width:100%}
   /* nav */
-  nav{position:fixed; bottom:0; left:0; right:0; display:flex; background:#101a14;
+  nav{position:fixed; bottom:0; left:0; right:0; display:flex; background:#0d1330;
     border-top:1px solid var(--line); z-index:10; padding-bottom:env(safe-area-inset-bottom)}
   nav button{flex:1; background:none; border-radius:0; color:var(--dim); font-size:12px;
     padding:10px 0 12px; display:flex; flex-direction:column; align-items:center; gap:3px; font-weight:600}
@@ -50,7 +51,7 @@
   .chips{display:flex; flex-wrap:wrap; gap:8px}
   .chip{padding:10px 14px; border-radius:999px; background:var(--card2); border:1px solid var(--line);
     font-weight:600; font-size:15px; cursor:pointer; user-select:none}
-  .chip.on{background:var(--green); color:#06130b; border-color:var(--green)}
+  .chip.on{background:var(--green); color:var(--ink); border-color:var(--green)}
   .chip.sel{outline:3px solid var(--amber)}
   /* live clock */
   .clockbox{text-align:center; padding:14px 12px}
@@ -65,10 +66,10 @@
   .pcard{display:flex; align-items:center; gap:10px; background:var(--card2); border:1px solid var(--line);
     border-radius:12px; padding:10px 12px; margin-bottom:6px; cursor:pointer}
   .pcard.sel{outline:3px solid var(--amber)}
-  .pcard .pos{font-size:11px; font-weight:800; letter-spacing:.5px; color:#06130b; background:var(--green);
+  .pcard .pos{font-size:11px; font-weight:800; letter-spacing:.5px; color:var(--ink); background:var(--green);
     border-radius:6px; padding:3px 7px; min-width:70px; text-align:center}
   .pcard .pos.kpr{background:var(--blue)}
-  .pcard .pos.bnk{background:#3a4a40; color:#cfe3d6}
+  .pcard .pos.bnk{background:#333f66; color:#cdd6f0}
   .pcard .nm{font-weight:700; font-size:16px; flex:1}
   .pcard .tm{font-size:13px; color:var(--dim); font-variant-numeric:tabular-nums; text-align:right}
   .pcard .tm b{color:var(--text)}
@@ -94,7 +95,7 @@
   .modal button{width:100%; margin-bottom:8px; text-align:left; padding:14px 16px}
   .seg{display:flex; background:var(--card2); border-radius:10px; padding:3px; gap:3px}
   .seg button{flex:1; padding:9px 4px; border-radius:8px; background:transparent; font-size:14px; font-weight:600; color:var(--dim)}
-  .seg button.on{background:var(--green); color:#06130b}
+  .seg button.on{background:var(--green); color:var(--ink)}
   .field-label{font-size:12px; color:var(--dim); margin:10px 0 6px; font-weight:700; text-transform:uppercase; letter-spacing:.6px}
   .hint{font-size:13px; color:var(--dim); line-height:1.5}
   .flash{position:fixed; inset:0; background:var(--amber); opacity:0; pointer-events:none; z-index:40}
@@ -104,7 +105,7 @@
 </head>
 <body>
 <header>
-  <span class="logo">⚽</span>
+  <img src="crest.png" alt="Bjerke IL" style="height:38px">
   <div><h1>Bytteplan</h1><p class="sub">Bjerke IL · J8/J9 · 5er</p></div>
 </header>
 <main id="main"></main>
@@ -119,7 +120,7 @@ const POS = [
   {k:'F', n:'Forsvar',  c:'#38c172'},
   {k:'V', n:'Venstre',  c:'#5aa9e6'},
   {k:'H', n:'Høyre',    c:'#f0b429'},
-  {k:'S', n:'Spiss',    c:'#e5484d'},
+  {k:'S', n:'Spiss',    c:'#de1420'},
 ];
 const POSK = POS.map(p=>p.k);
 const posName = k => (POS.find(p=>p.k===k)||{}).n || k;
@@ -249,6 +250,20 @@ function setupHtml(){
       </div>
     </div>
 
+    ${presentIds.length? `<h2>Favorittposisjon (valgfritt)</h2>
+    <div class="card">
+      <p class="hint" style="margin-top:0">Brukes bare i <b>siste periode</b>: da får spillere favorittposisjonen sin når de byttes inn – glimtplassen. Hvem som spiller og hvor lenge påvirkes ikke.</p>
+      ${presentIds.map(id=>{
+        const p=playerById(id);
+        return `<div class="row" style="margin-bottom:6px">
+          <span style="flex:1; font-weight:600">${esc(p.name)}</span>
+          <div class="seg" style="flex:2">
+            <button class="${!p.fav?'on':''}" onclick="setFav('${id}',null)">–</button>
+            ${POS.map(ps=>`<button class="${p.fav===ps.k?'on':''}" onclick="setFav('${id}','${ps.k}')">${ps.n.slice(0,4)}</button>`).join('')}
+          </div></div>`;
+      }).join('')}
+    </div>`:''}
+
     <h2>Kampoppsett</h2>
     <div class="card">
       <div class="field-label">Perioder</div>
@@ -282,6 +297,7 @@ function togglePresent(id){ const s=db.setup; s.present[id]=!s.present[id];
   if(!s.present[id] && s.keeperId===id) s.keeperId=null; s.field=null; s.bench=null; render(); }
 function setKeeper(id){ db.setup.keeperId=id; db.setup.field=null; db.setup.bench=null; render(); }
 function setOpt(k,v){ db.setup[k]=v; render(); }
+function setFav(pid,k){ const p=playerById(pid); if(p){ p.fav=k; render(); } }
 
 function suggestLineup(){
   const s=db.setup;
@@ -380,7 +396,9 @@ function liveHtml(){
         <button class="grow primary" onclick="execSub()">Utfør bytte ✓</button>
       </div></div>`;
   } else if(ns){
-    banner = `<div class="card"><div class="field-label" style="margin-top:0">Neste bytte</div>${subMovesHtml(ns)}</div>`;
+    const favNote = favActive(m) && [...m.field.map(f=>f.pid),...m.bench].some(pid=>favOf(pid))
+      ? '<p class="hint" style="margin-bottom:0">⭐ Siste periode: favorittposisjoner er med i vurderingen.</p>' : '';
+    banner = `<div class="card"><div class="field-label" style="margin-top:0">Neste bytte</div>${subMovesHtml(ns)}${favNote}</div>`;
   }
 
   return `
@@ -393,6 +411,12 @@ function liveHtml(){
           `<button class="${m.running?'':'primary'}" style="min-width:130px" onclick="toggleRun()">${m.running?'⏸ Pause':'▶ Start'}</button>`}
         <button class="ghost" onclick="confirmAbort()">Avslutt</button>
       </div>
+      ${m.finished ? '' : `
+      <div class="row" style="margin-top:12px; align-items:center">
+        <span style="font-size:12px; color:var(--dim); font-weight:700; text-transform:uppercase; letter-spacing:.6px">Per bytte</span>
+        <div class="seg grow">${[['auto','Auto'],[1,'1'],[2,'2'],[3,'3']].map(([v,l])=>
+          `<button class="${m.subsPer===v?'on':''}" onclick="setSubsPerLive(${typeof v==='string'?`'${v}'`:v})">${l}</button>`).join('')}</div>
+      </div>`}
     </div>
     ${banner}
     <h2>På banen</h2>
@@ -416,9 +440,10 @@ function liveHtml(){
 function livePcard(f){
   const m=curMatch(); const pp=m.perPlayer[f.pid];
   const selCls = selected && selected.id===f.pid ? 'sel':'';
+  const star = favActive(m) && favOf(f.pid)===f.pos ? ' ⭐' : '';
   return `<div class="pcard ${selCls}" onclick="tapLive('${f.pid}')">
     <span class="pos" style="background:${posColor(f.pos)}">${posName(f.pos)}</span>
-    <span class="nm">${esc(pname(f.pid))}</span>
+    <span class="nm">${esc(pname(f.pid))}${star}</span>
     <span class="tm">inne <b>${mmss(pp.stintSec)}</b><br>tot ${mmss(pp.fieldSec)}</span></div>`;
 }
 function liveBench(pid,i){
@@ -455,8 +480,11 @@ function subsCount(m){
    field: [{pid,pos,stint}], bench: [pid], ptot(pid,posK) = accumulated time in position.
    Outs = longest current stint (fairness). Ins take their least-played position
    globally – if a staying player holds it, that player shifts to a vacated spot.
-   The epsilon prefers vacated positions on ties to avoid needless shuffling. */
-function planSub(field, bench, S, ptot){
+   The epsilon prefers vacated positions on ties to avoid needless shuffling.
+   fav (optional, pid→posK): favourite positions trump the least-played rule –
+   only passed in the final period ("glimtplassen"), never affects who plays. */
+function planSub(field, bench, S, ptot, fav){
+  const favBonus=(pid,k)=> (fav && fav(pid)===k) ? -1e7 : 0;
   const outs=[...field].sort((a,b)=>b.stint-a.stint).slice(0,S);
   const outSet=new Set(outs.map(o=>o.pid));
   const stayers=field.filter(f=>!outSet.has(f.pid));
@@ -467,7 +495,7 @@ function planSub(field, bench, S, ptot){
     let best=null;
     for(const k of POSK){
       if(taken.has(k)) continue;
-      const score=ptot(pid,k)+(vacated.has(k)?0:0.001);
+      const score=ptot(pid,k)+(vacated.has(k)?0:0.001)+favBonus(pid,k);
       if(!best||score<best.score) best={k,score};
     }
     taken.add(best.k);
@@ -480,13 +508,15 @@ function planSub(field, bench, S, ptot){
     let best=null;
     for(const k of freePos){
       if(shifts.some(x=>x.to===k)) continue;
-      const score=ptot(s.pid,k);
+      const score=ptot(s.pid,k)+favBonus(s.pid,k);
       if(!best||score<best.score) best={k,score};
     }
     if(best) shifts.push({pid:s.pid, from:s.pos, to:best.k});
   });
   return {moves, shifts};
 }
+function favActive(m){ return m.period===m.periods; }
+function favOf(pid){ return playerById(pid)?.fav || null; }
 function computeNextSub(m){
   if(m.finished||m.awaitingPeriod) return null;
   if(m.bench.length===0){
@@ -496,7 +526,7 @@ function computeNextSub(m){
   }
   const S=subsCount(m);
   const field=m.field.map(f=>({pid:f.pid,pos:f.pos,stint:m.perPlayer[f.pid].stintSec}));
-  return planSub(field, m.bench, S, (pid,k)=>posTotal(m,pid,k));
+  return planSub(field, m.bench, S, (pid,k)=>posTotal(m,pid,k), favActive(m)?favOf:null);
 }
 function subMovesHtml(ns){
   if(ns.rotation) return `<div class="mv">Ingen benk – rullér posisjoner:</div>` +
@@ -533,6 +563,12 @@ function execSub(){
   render();
 }
 function snooze(){ const m=curMatch(); m.snoozeSec+=60; dueAlerted=false; render(); }
+function setSubsPerLive(v){
+  const m=curMatch(); if(!m) return;
+  m.subsPer=v;
+  logIt('Spillere per bytte satt til '+(v==='auto'?'auto':v)+'.');
+  render();
+}
 
 /* ================= live interactions ================= */
 function tapLive(pid){
@@ -568,6 +604,7 @@ function openPlayerModal(pid){
   let btns='';
   if(onField){
     btns += m.bench.length? `<button class="warn" onclick="injurySub('${pid}')">🚑 Skade – ut nå (${esc(pname(m.bench[0]))} inn)</button>`:'';
+    btns += m.bench.length? `<button onclick="tiredSub('${pid}')">😮‍💨 Sliten – kort pause (inn igjen ved neste bytte)</button>`:'';
     btns += `<button onclick="startSwapSel('${pid}')">🔁 Bytt plass med … (trykk på en annen)</button>`;
     btns += `<button onclick="makeKeeper('${pid}')">🧤 Gjør til keeper</button>`;
     btns += `<button class="warn ghost" onclick="markUnavailable('${pid}')">Sett som utilgjengelig</button>`;
@@ -594,6 +631,19 @@ function injurySub(pid){
   m.perPlayer[inPid].stintSec=0;
   m.unavailable.push(pid);
   logIt('🚑 '+pname(pid)+' ut (skade). '+pname(inPid)+' inn ('+posName(f.pos)+').');
+  render();
+}
+function tiredSub(pid){
+  closeModal();
+  const m=curMatch();
+  const f=m.field.find(x=>x.pid===pid); if(!f||!m.bench.length) return;
+  const inPid=m.bench.shift();
+  m.field=m.field.filter(x=>x.pid!==pid);
+  m.field.push({pid:inPid,pos:f.pos});
+  m.field.sort((a,b)=>POSK.indexOf(a.pos)-POSK.indexOf(b.pos));
+  m.perPlayer[inPid].stintSec=0;
+  m.bench.unshift(pid); // kort pause: fremst i køen, inn igjen ved neste bytte
+  logIt('😮‍💨 '+pname(pid)+' tar en pust. '+pname(inPid)+' inn ('+posName(f.pos)+').');
   render();
 }
 function markUnavailable(pid){
@@ -768,7 +818,8 @@ function showPlanPreview(){
     t+=s.intervalSec;
     sim.field.forEach(f=>{ f.stint+=s.intervalSec; sim.posT[f.pid][f.pos]+=s.intervalSec; sim.tot[f.pid]+=s.intervalSec; });
     if(!sim.bench.length){ events.push({t,txt:'Rullér posisjoner'}); continue; }
-    const plan=planSub(sim.field, sim.bench, S, (pid,k)=>sim.posT[pid][k]);
+    const inLastPeriod = Math.min(s.periods, Math.floor(t/(s.periodMin*60))+1)===s.periods;
+    const plan=planSub(sim.field, sim.bench, S, (pid,k)=>sim.posT[pid][k], inLastPeriod?favOf:null);
     const parts=[];
     const outPids=plan.moves.map(mv=>mv.outPid);
     sim.field=sim.field.filter(f=>!outPids.includes(f.pid));
