@@ -1,4 +1,4 @@
-const CACHE = 'bytteplan-v3';
+const CACHE = 'bytteplan-v4';
 const ASSETS = ['./', './index.html', './manifest.json', './crest.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

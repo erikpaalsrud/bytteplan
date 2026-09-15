@@ -198,7 +198,7 @@ function addTodayPlayer(){
 
 /* ================= setup ================= */
 function defaultSetup(){
-  return {present:{}, keeperId:null, periods:2, periodMin:20, intervalSec:150, subsPer:'auto',
+  return {present:{}, keeperId:null, periods:2, periodMin:25, breakMin:5, intervalSec:180, subsPer:'auto',
           field:null, bench:null};
 }
 function setupHtml(){
@@ -270,6 +270,8 @@ function setupHtml(){
       <div class="seg">${[2,3].map(n=>`<button class="${s.periods===n?'on':''}" onclick="setOpt('periods',${n})">${n}</button>`).join('')}</div>
       <div class="field-label">Periodelengde</div>
       <div class="seg">${[15,20,25].map(n=>`<button class="${s.periodMin===n?'on':''}" onclick="setOpt('periodMin',${n})">${n} min</button>`).join('')}</div>
+      <div class="field-label">Pause mellom perioder</div>
+      <div class="seg">${[3,5,10].map(n=>`<button class="${(s.breakMin||5)===n?'on':''}" onclick="setOpt('breakMin',${n})">${n} min</button>`).join('')}</div>
       <div class="field-label">Tid mellom bytter</div>
       <div class="seg">${[[120,'2:00'],[150,'2:30'],[180,'3:00']].map(([v,l])=>`<button class="${s.intervalSec===v?'on':''}" onclick="setOpt('intervalSec',${v})">${l}</button>`).join('')}</div>
       <div class="field-label">Spillere per bytte</div>
@@ -352,7 +354,8 @@ function startMatch(){
     field:s.field.map(f=>({pid:f.pid,pos:f.pos})),
     bench:[...s.bench],
     unavailable:[],
-    periods:s.periods, periodSec:s.periodMin*60, intervalSec:s.intervalSec, subsPer:s.subsPer,
+    periods:s.periods, periodSec:s.periodMin*60, breakSec:(s.breakMin||5)*60,
+    intervalSec:s.intervalSec, subsPer:s.subsPer,
     period:1, clockSec:0, totalSec:0, running:false,
     lastSubTotal:0, snoozeSec:0, awaitingPeriod:false, finished:false,
     perPlayer:per, log:[],
@@ -382,8 +385,12 @@ function liveHtml(){
       <p class="hint">Lagre kampen for å oppdatere spilletid- og posisjonsstatistikken.</p>
       <button class="big primary" onclick="endMatch()">Lagre og avslutt kamp</button></div>`;
   } else if(m.awaitingPeriod){
-    banner = `<div class="subbanner"><b>Periode ${m.period} ferdig</b>
-      <p class="hint">${keeperSuggestionText(m)}</p>
+    const bLeft = m.breakEndsAt ? Math.max(0,Math.ceil((m.breakEndsAt-Date.now())/1000)) : 0;
+    const bOver = bLeft<=0;
+    banner = `<div class="subbanner"><b>Periode ${m.period} ferdig – pause</b>
+      <div class="${bOver?'due':''}" style="font-size:44px; font-weight:800; font-variant-numeric:tabular-nums; margin:6px 0; text-align:center">
+        <span id="breakleft">${mmss(bLeft)}</span></div>
+      <p class="hint" style="margin-top:0">${bOver?'Pausen er over – start neste periode!':'igjen av pausen – fin tid til å varme opp neste keeper.'} ${keeperSuggestionText(m)}</p>
       <div class="row">
         <button class="grow" onclick="openKeeperModal()">Bytt keeper</button>
         <button class="grow primary" onclick="startNextPeriod()">Start periode ${m.period+1} ▶</button>
@@ -726,7 +733,7 @@ function toggleRun(force){
 }
 function startNextPeriod(){
   const m=curMatch();
-  m.period++; m.clockSec=0; m.awaitingPeriod=false;
+  m.period++; m.clockSec=0; m.awaitingPeriod=false; m.breakEndsAt=null;
   m.lastSubTotal=m.totalSec; m.snoozeSec=0; dueAlerted=false;
   // fresh stints for new period
   m.field.forEach(f=>m.perPlayer[f.pid].stintSec=0);
@@ -737,7 +744,20 @@ function startNextPeriod(){
 }
 setInterval(()=>{
   const m=curMatch();
-  if(!m||!m.running){ lastTick=null; return; }
+  if(!m){ lastTick=null; return; }
+  if(m.awaitingPeriod && m.breakEndsAt){
+    // pauseklokke på veggtid – går riktig selv om telefonen har vært låst
+    const left=Math.ceil((m.breakEndsAt-Date.now())/1000);
+    const el=$('#breakleft');
+    if(el) el.textContent=mmss(Math.max(0,left));
+    if(left<=0 && !m.breakAlerted){
+      m.breakAlerted=true;
+      logIt('Pausen er over!');
+      alertUser(); render(); save();
+    }
+    lastTick=null; return;
+  }
+  if(!m.running){ lastTick=null; return; }
   const now=Date.now();
   if(lastTick===null){ lastTick=now; return; }
   const dt=(now-lastTick)/1000; lastTick=now;
@@ -755,7 +775,12 @@ setInterval(()=>{
   if(m.clockSec>=m.periodSec){
     m.running=false;
     if(m.period>=m.periods){ m.finished=true; logIt('Kampslutt!'); }
-    else { m.awaitingPeriod=true; logIt('Periode '+m.period+' ferdig.'); }
+    else {
+      m.awaitingPeriod=true;
+      m.breakEndsAt=Date.now()+(m.breakSec||300)*1000;
+      m.breakAlerted=false;
+      logIt('Periode '+m.period+' ferdig. Pause '+mmss(m.breakSec||300)+'.');
+    }
     alertUser(); render(); return;
   }
   // sub due?
@@ -924,7 +949,7 @@ async function requestWakeLock(){
 }
 function releaseWakeLock(){ try{ wakeLock&&wakeLock.release(); wakeLock=null; }catch(e){} }
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible' && db.match && db.match.running) requestWakeLock();
+  if(document.visibilityState==='visible' && db.match && (db.match.running || db.match.awaitingPeriod)) requestWakeLock();
 });
 
 /* service worker for offline use */
