@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b3d20">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Bytteplan · Bjerke IL J8/J9</title>
+<style>
+  :root{
+    --bg:#0e1512; --card:#16211b; --card2:#1c2a22; --line:#2a3d31;
+    --text:#eef5f0; --dim:#8fa598; --green:#38c172; --green-dk:#0b3d20;
+    --amber:#f0b429; --red:#e5484d; --blue:#5aa9e6;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0; padding:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    font-size:16px; overscroll-behavior:none}
+  body{padding-bottom:76px}
+  header{position:sticky; top:0; z-index:10; background:var(--green-dk);
+    padding:10px 14px calc(10px); display:flex; align-items:center; gap:10px;
+    padding-top:calc(10px + env(safe-area-inset-top))}
+  header .logo{font-size:20px}
+  header h1{font-size:16px; margin:0; font-weight:700; letter-spacing:.3px}
+  header .sub{font-size:11px; color:#a8d5b8; margin:0}
+  main{padding:12px; max-width:560px; margin:0 auto}
+  h2{font-size:14px; text-transform:uppercase; letter-spacing:.8px; color:var(--dim); margin:18px 0 8px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:12px}
+  button{font:inherit; border:0; border-radius:12px; padding:12px 16px; font-weight:700;
+    background:var(--card2); color:var(--text); cursor:pointer; touch-action:manipulation}
+  button:active{transform:scale(.97)}
+  button.primary{background:var(--green); color:#06130b}
+  button.warn{background:var(--red); color:#fff}
+  button.ghost{background:transparent; border:1px solid var(--line); color:var(--dim); font-weight:600}
+  button.big{width:100%; padding:16px; font-size:17px}
+  button:disabled{opacity:.4}
+  .row{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .grow{flex:1}
+  input[type=text],input[type=number],select{font:inherit; background:var(--card2); color:var(--text);
+    border:1px solid var(--line); border-radius:10px; padding:11px 12px; width:100%}
+  /* nav */
+  nav{position:fixed; bottom:0; left:0; right:0; display:flex; background:#101a14;
+    border-top:1px solid var(--line); z-index:10; padding-bottom:env(safe-area-inset-bottom)}
+  nav button{flex:1; background:none; border-radius:0; color:var(--dim); font-size:12px;
+    padding:10px 0 12px; display:flex; flex-direction:column; align-items:center; gap:3px; font-weight:600}
+  nav button .ico{font-size:20px}
+  nav button.on{color:var(--green)}
+  /* chips */
+  .chips{display:flex; flex-wrap:wrap; gap:8px}
+  .chip{padding:10px 14px; border-radius:999px; background:var(--card2); border:1px solid var(--line);
+    font-weight:600; font-size:15px; cursor:pointer; user-select:none}
+  .chip.on{background:var(--green); color:#06130b; border-color:var(--green)}
+  .chip.sel{outline:3px solid var(--amber)}
+  /* live clock */
+  .clockbox{text-align:center; padding:14px 12px}
+  .clock{font-size:52px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1}
+  .clock small{font-size:18px; color:var(--dim); font-weight:600}
+  .period{color:var(--dim); font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1px}
+  .nextsub{margin-top:6px; font-size:15px; color:var(--dim); font-variant-numeric:tabular-nums}
+  .nextsub b{color:var(--text)}
+  .due{animation:pulse 1s infinite; color:var(--amber)!important; font-weight:800}
+  @keyframes pulse{50%{opacity:.45}}
+  /* players */
+  .pcard{display:flex; align-items:center; gap:10px; background:var(--card2); border:1px solid var(--line);
+    border-radius:12px; padding:10px 12px; margin-bottom:6px; cursor:pointer}
+  .pcard.sel{outline:3px solid var(--amber)}
+  .pcard .pos{font-size:11px; font-weight:800; letter-spacing:.5px; color:#06130b; background:var(--green);
+    border-radius:6px; padding:3px 7px; min-width:70px; text-align:center}
+  .pcard .pos.kpr{background:var(--blue)}
+  .pcard .pos.bnk{background:#3a4a40; color:#cfe3d6}
+  .pcard .nm{font-weight:700; font-size:16px; flex:1}
+  .pcard .tm{font-size:13px; color:var(--dim); font-variant-numeric:tabular-nums; text-align:right}
+  .pcard .tm b{color:var(--text)}
+  .subbanner{background:linear-gradient(135deg,#3a2d05,#4a3a06); border:1px solid var(--amber);
+    border-radius:14px; padding:12px; margin-bottom:12px}
+  .subbanner .mv{font-size:16px; margin:4px 0}
+  .subbanner .mv b{color:var(--amber)}
+  .loglist{font-size:13px; color:var(--dim); line-height:1.7; font-variant-numeric:tabular-nums}
+  table{width:100%; border-collapse:collapse; font-size:14px}
+  th,td{text-align:left; padding:7px 6px; border-bottom:1px solid var(--line)}
+  th{color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.6px}
+  td.num,th.num{text-align:right; font-variant-numeric:tabular-nums}
+  .posbar{display:flex; height:8px; border-radius:4px; overflow:hidden; background:var(--card2); min-width:80px}
+  .posbar i{display:block}
+  .legend{display:flex; gap:12px; font-size:11px; color:var(--dim); margin-top:6px; flex-wrap:wrap}
+  .legend i{display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:4px; vertical-align:-1px}
+  /* modal */
+  .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:50; display:flex;
+    align-items:flex-end; justify-content:center}
+  .modal{background:var(--card); border-radius:20px 20px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom));
+    width:100%; max-width:560px; border:1px solid var(--line)}
+  .modal h3{margin:0 0 12px; font-size:17px}
+  .modal button{width:100%; margin-bottom:8px; text-align:left; padding:14px 16px}
+  .seg{display:flex; background:var(--card2); border-radius:10px; padding:3px; gap:3px}
+  .seg button{flex:1; padding:9px 4px; border-radius:8px; background:transparent; font-size:14px; font-weight:600; color:var(--dim)}
+  .seg button.on{background:var(--green); color:#06130b}
+  .field-label{font-size:12px; color:var(--dim); margin:10px 0 6px; font-weight:700; text-transform:uppercase; letter-spacing:.6px}
+  .hint{font-size:13px; color:var(--dim); line-height:1.5}
+  .flash{position:fixed; inset:0; background:var(--amber); opacity:0; pointer-events:none; z-index:40}
+  .flash.go{animation:fl .5s 3}
+  @keyframes fl{50%{opacity:.35}}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">⚽</span>
+  <div><h1>Bytteplan</h1><p class="sub">Bjerke IL · J8/J9 · 5er</p></div>
+</header>
+<main id="main"></main>
+<nav id="nav"></nav>
+<div class="flash" id="flash"></div>
+<div id="modalhost"></div>
+
+<script>
+'use strict';
+/* ================= data ================= */
+const POS = [
+  {k:'F', n:'Forsvar',  c:'#38c172'},
+  {k:'V', n:'Venstre',  c:'#5aa9e6'},
+  {k:'H', n:'Høyre',    c:'#f0b429'},
+  {k:'S', n:'Spiss',    c:'#e5484d'},
+];
+const POSK = POS.map(p=>p.k);
+const posName = k => (POS.find(p=>p.k===k)||{}).n || k;
+const posColor = k => (POS.find(p=>p.k===k)||{}).c || '#888';
+
+const LS_KEY = 'bytteplan-v1';
+let db = loadDb();
+function loadDb(){
+  try{
+    const d = JSON.parse(localStorage.getItem(LS_KEY));
+    if(d && Array.isArray(d.roster)){ if(!Array.isArray(d.history)) d.history=[]; return d; }
+  }catch(e){}
+  return {roster:[], match:null, setup:null, history:[]};
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(db)); }catch(e){} }
+function uid(){ return Math.random().toString(36).slice(2,9); }
+function playerById(id){ return db.roster.find(p=>p.id===id); }
+function pname(id){ const p=playerById(id); return p?p.name:'?'; }
+function emptyStats(){ return {fieldSec:0, keeperSec:0, matches:0, pos:{F:0,V:0,H:0,S:0}}; }
+
+/* time helpers */
+function mmss(sec){ sec=Math.max(0,Math.round(sec)); const m=Math.floor(sec/60), s=sec%60;
+  return m+':' + String(s).padStart(2,'0'); }
+function minShort(sec){ return Math.round(sec/60)+"'"; }
+
+/* season pos time incl current match */
+function posTotal(m, pid, k){
+  const season = (playerById(pid)?.stats?.pos?.[k]) || 0;
+  const cur = m ? (m.perPlayer[pid]?.pos?.[k] || 0) : 0;
+  return season + cur;
+}
+function keeperTotal(m, pid){
+  const season = (playerById(pid)?.stats?.keeperSec) || 0;
+  const cur = m ? (m.perPlayer[pid]?.keeperSec || 0) : 0;
+  return season + cur;
+}
+
+/* ================= views / router ================= */
+let view = db.match ? 'kamp' : 'kamp';
+let selected = null;          // tap-to-swap selection {ctx:'live'|'setup', id}
+const $ = sel => document.querySelector(sel);
+function render(){
+  renderNav();
+  const m = $('#main');
+  if(view==='kamp') m.innerHTML = db.match ? liveHtml() : setupHtml();
+  else if(view==='hist') m.innerHTML = histHtml();
+  save();
+}
+function renderNav(){
+  const items=[['kamp','⚽','Kamp'],['hist','📋','Kamper']];
+  $('#nav').innerHTML = items.map(([v,ico,lbl])=>
+    `<button class="${view===v?'on':''}" onclick="go('${v}')"><span class="ico">${ico}</span>${lbl}</button>`).join('');
+}
+function go(v){ view=v; selected=null; render(); }
+
+/* ================= per-match player entry =================
+   No roster database to maintain: coach types today's names.
+   Previously used names are remembered locally and offered as
+   one-tap chips (and carry position stats for smarter suggestions). */
+function addTodayPlayer(){
+  const el=$('#newname'); const name=(el.value||'').trim();
+  if(!name) return;
+  let p=db.roster.find(x=>x.name.toLowerCase()===name.toLowerCase());
+  if(!p){
+    p={id:uid(), name, stats:emptyStats()};
+    db.roster.push(p);
+    db.roster.sort((a,b)=>a.name.localeCompare(b.name,'nb'));
+  }
+  db.setup.present[p.id]=true;
+  db.setup.field=null; db.setup.bench=null;
+  el.value='';
+  render();
+  const inp=$('#newname'); if(inp&&inp.focus) inp.focus();
+}
+
+/* ================= setup ================= */
+function defaultSetup(){
+  return {present:{}, keeperId:null, periods:2, periodMin:20, intervalSec:150, subsPer:'auto',
+          field:null, bench:null};
+}
+function setupHtml(){
+  if(!db.setup) db.setup = defaultSetup();
+  const s = db.setup;
+  const presentIds = db.roster.filter(p=>s.present[p.id]).map(p=>p.id);
+  const nOut = presentIds.length - (s.keeperId && s.present[s.keeperId] ? 1:0);
+
+  let lineupHtml='';
+  if(s.field){
+    lineupHtml = `
+      <h2>Foreslått oppstilling</h2>
+      <div class="card">
+        <p class="hint" style="margin-top:0">Trykk på to spillere for å bytte dem om. Første 4 starter, resten er byttekø i rekkefølge.</p>
+        <div class="field-label">På banen</div>
+        ${keeperCardHtml(s.keeperId,'setup')}
+        ${s.field.map(f=>setupCard(f.pid,f.pos)).join('')}
+        <div class="field-label">Byttekø</div>
+        ${s.bench.map((pid,i)=>setupCard(pid,null,i+1)).join('')}
+        <div class="row" style="margin-top:10px">
+          <button class="ghost grow" onclick="suggestLineup()">↻ Foreslå på nytt</button>
+          <button class="ghost grow" onclick="showPlanPreview()">Se bytteplan</button>
+        </div>
+      </div>
+      <button class="big primary" onclick="startMatch()">Start kamp ▶</button>
+      <div style="height:20px"></div>`;
+  }
+
+  return `
+    <h2>Ny kamp – hvem spiller i dag?</h2>
+    <div class="card">
+      <div class="row">
+        <input type="text" id="newname" class="grow" placeholder="Skriv navn …" autocomplete="off"
+          onkeydown="if(event.key==='Enter')addTodayPlayer()">
+        <button class="primary" onclick="addTodayPlayer()">Legg til</button>
+      </div>
+      ${db.roster.length? `<div class="field-label">Trykk for å velge${db.roster.some(p=>p.stats.matches)? ' (husket fra tidligere kamper)':''}</div>
+      <div class="chips">
+        ${db.roster.map(p=>`<span class="chip ${s.present[p.id]?'on':''}" onclick="togglePresent('${p.id}')">${esc(p.name)}</span>`).join('')}
+      </div>`:''}
+      <p class="hint" style="margin-bottom:0">${presentIds.length} spillere valgt${presentIds.length>=5?' · '+(presentIds.length-5)+' på benken av gangen':''}. Navn lagres kun på denne telefonen.</p>
+    </div>
+
+    <h2>Keeper (1. periode)</h2>
+    <div class="card">
+      <div class="chips">
+        ${presentIds.map(id=>`<span class="chip ${s.keeperId===id?'on':''}" onclick="setKeeper('${id}')">${esc(pname(id))}</span>`).join('')
+          || '<p class="hint" style="margin:0">Velg spillere først.</p>'}
+      </div>
+    </div>
+
+    <h2>Kampoppsett</h2>
+    <div class="card">
+      <div class="field-label">Perioder</div>
+      <div class="seg">${[2,3].map(n=>`<button class="${s.periods===n?'on':''}" onclick="setOpt('periods',${n})">${n}</button>`).join('')}</div>
+      <div class="field-label">Periodelengde</div>
+      <div class="seg">${[15,20,25].map(n=>`<button class="${s.periodMin===n?'on':''}" onclick="setOpt('periodMin',${n})">${n} min</button>`).join('')}</div>
+      <div class="field-label">Tid mellom bytter</div>
+      <div class="seg">${[[120,'2:00'],[150,'2:30'],[180,'3:00']].map(([v,l])=>`<button class="${s.intervalSec===v?'on':''}" onclick="setOpt('intervalSec',${v})">${l}</button>`).join('')}</div>
+      <div class="field-label">Spillere per bytte</div>
+      <div class="seg">${[['auto','Auto'],[1,'1'],[2,'2'],[3,'3']].map(([v,l])=>`<button class="${s.subsPer===v?'on':''}" onclick="setOpt('subsPer',${typeof v==='string'?`'${v}'`:v})">${l}</button>`).join('')}</div>
+    </div>
+
+    ${nOut>=4 && s.keeperId ?
+      (s.field ? lineupHtml : `<button class="big primary" onclick="suggestLineup()">Foreslå oppstilling →</button>`)
+      : `<p class="hint">Velg minst 5 spillere og en keeper for å komme videre.</p>`}
+    <div style="height:20px"></div>`;
+}
+function setupCard(pid, pos, queueNo){
+  const selCls = selected && selected.id===pid ? 'sel':'';
+  const tag = pos ? `<span class="pos" style="background:${posColor(pos)}">${posName(pos)}</span>`
+                  : `<span class="pos bnk">Benk ${queueNo}</span>`;
+  return `<div class="pcard ${selCls}" onclick="tapSetup('${pid}')">${tag}<span class="nm">${esc(pname(pid))}</span></div>`;
+}
+function keeperCardHtml(pid, ctx){
+  const selCls = selected && selected.id===pid ? 'sel':'';
+  return `<div class="pcard ${selCls}" onclick="${ctx==='setup'?`tapSetup('${pid}')`:`tapLive('${pid}')`}">
+    <span class="pos kpr">Keeper</span><span class="nm">${esc(pname(pid))}</span>
+    ${ctx==='live'? `<span class="tm"><b>${mmss(curMatch().perPlayer[pid].keeperSec)}</b> i mål</span>`:''}</div>`;
+}
+function togglePresent(id){ const s=db.setup; s.present[id]=!s.present[id];
+  if(!s.present[id] && s.keeperId===id) s.keeperId=null; s.field=null; s.bench=null; render(); }
+function setKeeper(id){ db.setup.keeperId=id; db.setup.field=null; db.setup.bench=null; render(); }
+function setOpt(k,v){ db.setup[k]=v; render(); }
+
+function suggestLineup(){
+  const s=db.setup;
+  const out = db.roster.filter(p=>s.present[p.id] && p.id!==s.keeperId).map(p=>p.id);
+  // least season playing time starts; shuffle equals
+  out.sort((a,b)=>{
+    const ta=playerById(a).stats.fieldSec, tb=playerById(b).stats.fieldSec;
+    return ta!==tb ? ta-tb : Math.random()-0.5;
+  });
+  const starters = out.slice(0,4);
+  // greedy global assignment: least-played position first
+  let pairs=[];
+  starters.forEach(pid=>POSK.forEach(k=>pairs.push({pid,k,t:posTotal(null,pid,k)})));
+  pairs.sort((a,b)=>a.t-b.t || Math.random()-0.5);
+  const usedP=new Set(), usedK=new Set(), field=[];
+  for(const pr of pairs){
+    if(usedP.has(pr.pid)||usedK.has(pr.k)) continue;
+    usedP.add(pr.pid); usedK.add(pr.k);
+    field.push({pid:pr.pid, pos:pr.k});
+  }
+  field.sort((a,b)=>POSK.indexOf(a.pos)-POSK.indexOf(b.pos));
+  s.field=field; s.bench=out.slice(4);
+  selected=null; render();
+}
+function tapSetup(pid){
+  const s=db.setup;
+  if(!selected){ selected={ctx:'setup', id:pid}; render(); return; }
+  if(selected.id===pid){ selected=null; render(); return; }
+  const a=selected.id, b=pid; selected=null;
+  swapInLineup(s, a, b); render();
+}
+function swapInLineup(s, a, b){
+  const loc = pid => {
+    if(s.keeperId===pid) return {t:'k'};
+    const fi=s.field.findIndex(f=>f.pid===pid); if(fi>=0) return {t:'f',i:fi};
+    const bi=s.bench.indexOf(pid); return {t:'b',i:bi};
+  };
+  const la=loc(a), lb=loc(b);
+  const put=(l,pid)=>{ if(l.t==='k')s.keeperId=pid; else if(l.t==='f')s.field[l.i].pid=pid; else s.bench[l.i]=pid; };
+  put(la,b); put(lb,a);
+}
+
+/* ================= match start ================= */
+function curMatch(){ return db.match; }
+function startMatch(){
+  const s=db.setup;
+  const per={};
+  const all=[s.keeperId, ...s.field.map(f=>f.pid), ...s.bench];
+  all.forEach(pid=>per[pid]={fieldSec:0,keeperSec:0,benchSec:0,stintSec:0,pos:{F:0,V:0,H:0,S:0},wasKeeper:pid===s.keeperId});
+  db.match = {
+    keeperId:s.keeperId,
+    field:s.field.map(f=>({pid:f.pid,pos:f.pos})),
+    bench:[...s.bench],
+    unavailable:[],
+    periods:s.periods, periodSec:s.periodMin*60, intervalSec:s.intervalSec, subsPer:s.subsPer,
+    period:1, clockSec:0, totalSec:0, running:false,
+    lastSubTotal:0, snoozeSec:0, awaitingPeriod:false, finished:false,
+    perPlayer:per, log:[],
+    startedAt:new Date().toISOString(),
+  };
+  logIt('Kampstart-oppsett klart. Keeper: '+pname(s.keeperId));
+  initAudio(); toggleRun(true);
+  view='kamp'; render();
+}
+function logIt(txt){
+  const m=curMatch(); if(!m) return;
+  m.log.unshift(mmss(m.totalSec)+' — '+txt);
+  if(m.log.length>80) m.log.pop();
+}
+
+/* ================= live view ================= */
+function liveHtml(){
+  const m=curMatch();
+  const ns=computeNextSub(m);
+  const nextAt = m.lastSubTotal + m.intervalSec + m.snoozeSec;
+  const left = nextAt - m.totalSec;
+  const due = m.running!==null && left<=0 && !m.awaitingPeriod && !m.finished;
+
+  let banner='';
+  if(m.finished){
+    banner = `<div class="subbanner"><b>Kampslutt! 🎉</b>
+      <p class="hint">Lagre kampen for å oppdatere spilletid- og posisjonsstatistikken.</p>
+      <button class="big primary" onclick="endMatch()">Lagre og avslutt kamp</button></div>`;
+  } else if(m.awaitingPeriod){
+    banner = `<div class="subbanner"><b>Periode ${m.period} ferdig</b>
+      <p class="hint">${keeperSuggestionText(m)}</p>
+      <div class="row">
+        <button class="grow" onclick="openKeeperModal()">Bytt keeper</button>
+        <button class="grow primary" onclick="startNextPeriod()">Start periode ${m.period+1} ▶</button>
+      </div></div>`;
+  } else if(ns && due){
+    banner = `<div class="subbanner"><b>⏱ BYTTE NÅ</b>
+      ${subMovesHtml(ns)}
+      <div class="row" style="margin-top:8px">
+        <button class="grow" onclick="snooze()">Utsett 1 min</button>
+        <button class="grow primary" onclick="execSub()">Utfør bytte ✓</button>
+      </div></div>`;
+  } else if(ns){
+    banner = `<div class="card"><div class="field-label" style="margin-top:0">Neste bytte</div>${subMovesHtml(ns)}</div>`;
+  }
+
+  return `
+    <div class="card clockbox">
+      <div class="period">Periode ${m.period} av ${m.periods}</div>
+      <div class="clock" id="clock">${mmss(m.clockSec)}<small> / ${mmss(m.periodSec)}</small></div>
+      <div class="nextsub ${due?'due':''}" id="nextsub">${m.finished?'':(m.awaitingPeriod?'Pause':(due?'BYTTE NÅ':'Neste bytte om <b>'+mmss(left)+'</b>'))}</div>
+      <div class="row" style="margin-top:12px; justify-content:center">
+        ${m.finished||m.awaitingPeriod ? '' :
+          `<button class="${m.running?'':'primary'}" style="min-width:130px" onclick="toggleRun()">${m.running?'⏸ Pause':'▶ Start'}</button>`}
+        <button class="ghost" onclick="confirmAbort()">Avslutt</button>
+      </div>
+    </div>
+    ${banner}
+    <h2>På banen</h2>
+    <div class="card">
+      ${keeperCardHtml(m.keeperId,'live')}
+      ${m.field.map(f=>livePcard(f)).join('')}
+      <p class="hint" style="margin-bottom:0">Trykk på en spiller for skadebytte, keeperbytte eller manuelt bytte.</p>
+    </div>
+    <h2>Byttekø</h2>
+    <div class="card">
+      ${m.bench.map((pid,i)=>liveBench(pid,i)).join('') || '<p class="hint" style="margin:0">Ingen på benken – appen foreslår posisjonsrullering i stedet.</p>'}
+    </div>
+    ${m.unavailable.length? `<h2>Utilgjengelig / skadet</h2><div class="card">${
+      m.unavailable.map(pid=>`<div class="pcard" onclick="restorePlayer('${pid}')"><span class="pos bnk">Ute</span><span class="nm">${esc(pname(pid))}</span><span class="tm">trykk for å ta inn igjen</span></div>`).join('')}</div>`:''}
+    <h2>Spilletid</h2>
+    <div class="card">${fairnessTable(m)}</div>
+    <h2>Logg</h2>
+    <div class="card loglist">${m.log.slice(0,25).map(esc).join('<br>') || 'Ingen hendelser ennå.'}</div>
+    <div style="height:10px"></div>`;
+}
+function livePcard(f){
+  const m=curMatch(); const pp=m.perPlayer[f.pid];
+  const selCls = selected && selected.id===f.pid ? 'sel':'';
+  return `<div class="pcard ${selCls}" onclick="tapLive('${f.pid}')">
+    <span class="pos" style="background:${posColor(f.pos)}">${posName(f.pos)}</span>
+    <span class="nm">${esc(pname(f.pid))}</span>
+    <span class="tm">inne <b>${mmss(pp.stintSec)}</b><br>tot ${mmss(pp.fieldSec)}</span></div>`;
+}
+function liveBench(pid,i){
+  const m=curMatch(); const pp=m.perPlayer[pid];
+  const selCls = selected && selected.id===pid ? 'sel':'';
+  return `<div class="pcard ${selCls}" onclick="tapLive('${pid}')">
+    <span class="pos bnk">${i===0?'Neste inn':'Benk '+(i+1)}</span>
+    <span class="nm">${esc(pname(pid))}</span>
+    <span class="tm">spilt <b>${mmss(pp.fieldSec)}</b></span></div>`;
+}
+function fairnessTable(m){
+  const ids=[m.keeperId, ...m.field.map(f=>f.pid), ...m.bench, ...m.unavailable];
+  const rows=ids.map(pid=>{
+    const pp=m.perPlayer[pid]; if(!pp) return '';
+    const played=pp.fieldSec+pp.keeperSec;
+    const segs=POSK.map(k=>({k, s:pp.pos[k]})).filter(x=>x.s>0);
+    const tot=Math.max(1,segs.reduce((a,x)=>a+x.s,0));
+    const bar=segs.map(x=>`<i style="width:${Math.round(100*x.s/tot)}%;background:${posColor(x.k)}"></i>`).join('');
+    return `<tr><td>${esc(pname(pid))}${pid===m.keeperId?' 🧤':''}</td>
+      <td><div class="posbar">${bar||''}</div></td>
+      <td class="num"><b>${mmss(played)}</b></td></tr>`;
+  }).join('');
+  return `<table><tr><th>Spiller</th><th>Posisjoner</th><th class="num">Spilt</th></tr>${rows}</table>
+    <div class="legend">${POS.map(p=>`<span><i style="background:${p.c}"></i>${p.n}</span>`).join('')}<span><i style="background:#5aa9e6"></i>… 🧤 = keeper nå</span></div>`;
+}
+
+/* ================= sub engine ================= */
+function subsCount(m){
+  if(m.bench.length===0) return 0;
+  const want = m.subsPer==='auto' ? Math.min(2, m.bench.length) : m.subsPer;
+  return Math.max(1, Math.min(want, m.bench.length, 4));
+}
+/* Core sub planner, shared by live view and plan preview.
+   field: [{pid,pos,stint}], bench: [pid], ptot(pid,posK) = accumulated time in position.
+   Outs = longest current stint (fairness). Ins take their least-played position
+   globally – if a staying player holds it, that player shifts to a vacated spot.
+   The epsilon prefers vacated positions on ties to avoid needless shuffling. */
+function planSub(field, bench, S, ptot){
+  const outs=[...field].sort((a,b)=>b.stint-a.stint).slice(0,S);
+  const outSet=new Set(outs.map(o=>o.pid));
+  const stayers=field.filter(f=>!outSet.has(f.pid));
+  const ins=bench.slice(0,S);
+  const vacated=new Set(outs.map(o=>o.pos));
+  const taken=new Set();
+  const moves=ins.map((pid,i)=>{
+    let best=null;
+    for(const k of POSK){
+      if(taken.has(k)) continue;
+      const score=ptot(pid,k)+(vacated.has(k)?0:0.001);
+      if(!best||score<best.score) best={k,score};
+    }
+    taken.add(best.k);
+    return {inPid:pid, outPid:outs[i].pid, pos:best.k};
+  });
+  const kept=new Set(stayers.filter(s=>!taken.has(s.pos)).map(s=>s.pos));
+  const freePos=POSK.filter(k=>!taken.has(k)&&!kept.has(k));
+  const shifts=[];
+  stayers.filter(s=>taken.has(s.pos)).forEach(s=>{
+    let best=null;
+    for(const k of freePos){
+      if(shifts.some(x=>x.to===k)) continue;
+      const score=ptot(s.pid,k);
+      if(!best||score<best.score) best={k,score};
+    }
+    if(best) shifts.push({pid:s.pid, from:s.pos, to:best.k});
+  });
+  return {moves, shifts};
+}
+function computeNextSub(m){
+  if(m.finished||m.awaitingPeriod) return null;
+  if(m.bench.length===0){
+    // no bench: suggest rotating positions so everyone still covers all positions
+    const moves = m.field.map((f,i)=>({rotPid:f.pid, from:f.pos, to:m.field[(i+1)%m.field.length].pos}));
+    return {rotation:true, moves};
+  }
+  const S=subsCount(m);
+  const field=m.field.map(f=>({pid:f.pid,pos:f.pos,stint:m.perPlayer[f.pid].stintSec}));
+  return planSub(field, m.bench, S, (pid,k)=>posTotal(m,pid,k));
+}
+function subMovesHtml(ns){
+  if(ns.rotation) return `<div class="mv">Ingen benk – rullér posisjoner:</div>` +
+    ns.moves.map(mv=>`<div class="mv"><b>${esc(pname(mv.rotPid))}</b>: ${posName(mv.from)} → ${posName(mv.to)}</div>`).join('') +
+    `<div class="row" style="margin-top:8px"><button class="grow primary" onclick="execSub()">Utført ✓</button></div>`;
+  return ns.moves.map(mv=>`<div class="mv">🟢 <b>${esc(pname(mv.inPid))}</b> inn som ${posName(mv.pos)} — 🔴 ${esc(pname(mv.outPid))} ut</div>`).join('')
+    + (ns.shifts||[]).map(sh=>`<div class="mv">↔️ ${esc(pname(sh.pid))} flytter til ${posName(sh.to)}</div>`).join('');
+}
+function execSub(){
+  const m=curMatch(); const ns=computeNextSub(m); if(!ns) return;
+  if(ns.rotation){
+    const posByPid={}; ns.moves.forEach(mv=>posByPid[mv.rotPid]=mv.to);
+    m.field.forEach(f=>{ f.pos=posByPid[f.pid]; });
+    logIt('Posisjonsrullering utført.');
+  } else {
+    const outPids=ns.moves.map(mv=>mv.outPid);
+    m.field = m.field.filter(f=>!outPids.includes(f.pid));
+    ns.moves.forEach(mv=>{
+      m.bench=m.bench.filter(x=>x!==mv.inPid);
+      m.field.push({pid:mv.inPid,pos:mv.pos});
+      m.perPlayer[mv.inPid].stintSec=0;
+      logIt(pname(mv.inPid)+' inn ('+posName(mv.pos)+') for '+pname(mv.outPid));
+    });
+    (ns.shifts||[]).forEach(sh=>{
+      const f=m.field.find(x=>x.pid===sh.pid);
+      if(f){ f.pos=sh.to; logIt(pname(sh.pid)+' flyttet til '+posName(sh.to)); }
+    });
+    // outs to back of queue, least total played comes back first
+    outPids.sort((a,b)=>m.perPlayer[a].fieldSec-m.perPlayer[b].fieldSec)
+      .forEach(pid=>m.bench.push(pid));
+    m.field.sort((a,b)=>POSK.indexOf(a.pos)-POSK.indexOf(b.pos));
+  }
+  m.lastSubTotal=m.totalSec; m.snoozeSec=0;
+  render();
+}
+function snooze(){ const m=curMatch(); m.snoozeSec+=60; dueAlerted=false; render(); }
+
+/* ================= live interactions ================= */
+function tapLive(pid){
+  const m=curMatch();
+  if(selected && selected.id!==pid){
+    // swap two selected players manually
+    manualSwap(selected.id,pid); selected=null; render(); return;
+  }
+  if(selected && selected.id===pid){ selected=null; render(); return; }
+  openPlayerModal(pid);
+}
+function manualSwap(a,b){
+  const m=curMatch();
+  const loc=pid=>{
+    if(m.keeperId===pid) return {t:'k'};
+    const fi=m.field.findIndex(f=>f.pid===pid); if(fi>=0) return {t:'f',i:fi};
+    const bi=m.bench.indexOf(pid); if(bi>=0) return {t:'b',i:bi};
+    return null;
+  };
+  const la=loc(a), lb=loc(b); if(!la||!lb) return;
+  const put=(l,pid)=>{ if(l.t==='k')m.keeperId=pid; else if(l.t==='f')m.field[l.i].pid=pid; else m.bench[l.i]=pid; };
+  put(la,b); put(lb,a);
+  // reset stint for anyone entering the field or goal
+  [[la,b],[lb,a]].forEach(([l,pid])=>{ if(l.t==='f'||l.t==='k') m.perPlayer[pid].stintSec=0; });
+  if(la.t==='k'||lb.t==='k') m.perPlayer[m.keeperId].wasKeeper=true;
+  logIt('Manuelt bytte: '+pname(a)+' ↔ '+pname(b));
+}
+function openPlayerModal(pid){
+  const m=curMatch();
+  const onField=m.field.some(f=>f.pid===pid);
+  const isKeeper=m.keeperId===pid;
+  const onBench=m.bench.includes(pid);
+  let btns='';
+  if(onField){
+    btns += m.bench.length? `<button class="warn" onclick="injurySub('${pid}')">🚑 Skade – ut nå (${esc(pname(m.bench[0]))} inn)</button>`:'';
+    btns += `<button onclick="startSwapSel('${pid}')">🔁 Bytt plass med … (trykk på en annen)</button>`;
+    btns += `<button onclick="makeKeeper('${pid}')">🧤 Gjør til keeper</button>`;
+    btns += `<button class="warn ghost" onclick="markUnavailable('${pid}')">Sett som utilgjengelig</button>`;
+  } else if(onBench){
+    btns += `<button onclick="benchToFront('${pid}')">⏫ Flytt fremst i køen</button>`;
+    btns += `<button onclick="startSwapSel('${pid}')">🔁 Bytt plass med … (trykk på en annen)</button>`;
+    btns += `<button onclick="makeKeeper('${pid}')">🧤 Gjør til keeper</button>`;
+    btns += `<button class="warn ghost" onclick="markUnavailable('${pid}')">Sett som utilgjengelig</button>`;
+  } else if(isKeeper){
+    btns += `<button onclick="openKeeperModal()">🧤 Bytt keeper</button>`;
+    btns += `<button onclick="startSwapSel('${pid}')">🔁 Bytt plass med … (trykk på en annen)</button>`;
+  }
+  showModal(`<h3>${esc(pname(pid))}</h3>${btns}<button class="ghost" onclick="closeModal()">Avbryt</button>`);
+}
+function startSwapSel(pid){ closeModal(); selected={ctx:'live', id:pid}; render(); }
+function injurySub(pid){
+  closeModal();
+  const m=curMatch();
+  const f=m.field.find(x=>x.pid===pid); if(!f||!m.bench.length) return;
+  const inPid=m.bench.shift();
+  m.field=m.field.filter(x=>x.pid!==pid);
+  m.field.push({pid:inPid,pos:f.pos});
+  m.field.sort((a,b)=>POSK.indexOf(a.pos)-POSK.indexOf(b.pos));
+  m.perPlayer[inPid].stintSec=0;
+  m.unavailable.push(pid);
+  logIt('🚑 '+pname(pid)+' ut (skade). '+pname(inPid)+' inn ('+posName(f.pos)+').');
+  render();
+}
+function markUnavailable(pid){
+  closeModal();
+  const m=curMatch();
+  if(m.field.some(f=>f.pid===pid)){ injurySubNoLog(pid); }
+  m.bench=m.bench.filter(x=>x!==pid);
+  if(!m.unavailable.includes(pid)) m.unavailable.push(pid);
+  logIt(pname(pid)+' satt som utilgjengelig.');
+  render();
+}
+function injurySubNoLog(pid){
+  const m=curMatch();
+  const f=m.field.find(x=>x.pid===pid); if(!f) return;
+  m.field=m.field.filter(x=>x.pid!==pid);
+  if(m.bench.length){
+    const inPid=m.bench.shift();
+    m.field.push({pid:inPid,pos:f.pos});
+    m.perPlayer[inPid].stintSec=0;
+    logIt(pname(inPid)+' inn ('+posName(f.pos)+').');
+  }
+  m.field.sort((a,b)=>POSK.indexOf(a.pos)-POSK.indexOf(b.pos));
+}
+function restorePlayer(pid){
+  const m=curMatch();
+  m.unavailable=m.unavailable.filter(x=>x!==pid);
+  m.bench.push(pid);
+  logIt(pname(pid)+' tilbake i byttekøen.');
+  render();
+}
+function benchToFront(pid){
+  closeModal();
+  const m=curMatch();
+  m.bench=m.bench.filter(x=>x!==pid); m.bench.unshift(pid);
+  render();
+}
+function makeKeeper(pid){
+  closeModal();
+  const m=curMatch();
+  const old=m.keeperId;
+  const f=m.field.find(x=>x.pid===pid);
+  if(f){ // field player becomes keeper; old keeper takes their position
+    m.field=m.field.filter(x=>x.pid!==pid);
+    m.field.push({pid:old,pos:f.pos});
+    m.field.sort((a,b)=>POSK.indexOf(a.pos)-POSK.indexOf(b.pos));
+    m.perPlayer[old].stintSec=0;
+  } else { // bench player becomes keeper; old keeper to back of queue
+    m.bench=m.bench.filter(x=>x!==pid);
+    m.bench.push(old);
+  }
+  m.keeperId=pid;
+  m.perPlayer[pid].stintSec=0;
+  m.perPlayer[pid].wasKeeper=true;
+  logIt('🧤 '+pname(pid)+' er ny keeper (var: '+pname(old)+').');
+  render();
+}
+function keeperSuggestionText(m){
+  const cands=[...m.field.map(f=>f.pid), ...m.bench]
+    .sort((a,b)=>keeperTotal(m,a)-keeperTotal(m,b) || m.perPlayer[b].fieldSec-m.perPlayer[a].fieldSec);
+  return cands.length? 'Forslag til ny keeper: <b>'+esc(pname(cands[0]))+'</b> (minst keepertid).' : '';
+}
+function openKeeperModal(){
+  const m=curMatch();
+  const cands=[...m.field.map(f=>f.pid), ...m.bench]
+    .sort((a,b)=>keeperTotal(m,a)-keeperTotal(m,b));
+  showModal(`<h3>Velg ny keeper</h3>${
+    cands.map(pid=>`<button onclick="makeKeeper('${pid}')">${esc(pname(pid))} <span style="color:var(--dim);font-weight:400">· ${Math.round(keeperTotal(m,pid)/60)} min i mål totalt</span></button>`).join('')}
+    <button class="ghost" onclick="closeModal()">Avbryt</button>`);
+}
+
+/* ================= clock ================= */
+let lastTick=null, dueAlerted=false, saveCounter=0;
+function toggleRun(force){
+  const m=curMatch(); if(!m||m.finished||m.awaitingPeriod) return;
+  m.running = force===true ? true : force===false ? false : !m.running;
+  lastTick=null;
+  if(m.running){ requestWakeLock(); initAudio(); logIt('Klokka startet.'); }
+  else logIt('Klokka pauset.');
+  render();
+}
+function startNextPeriod(){
+  const m=curMatch();
+  m.period++; m.clockSec=0; m.awaitingPeriod=false;
+  m.lastSubTotal=m.totalSec; m.snoozeSec=0; dueAlerted=false;
+  // fresh stints for new period
+  m.field.forEach(f=>m.perPlayer[f.pid].stintSec=0);
+  m.running=true; lastTick=null;
+  requestWakeLock();
+  logIt('Periode '+m.period+' startet.');
+  render();
+}
+setInterval(()=>{
+  const m=curMatch();
+  if(!m||!m.running){ lastTick=null; return; }
+  const now=Date.now();
+  if(lastTick===null){ lastTick=now; return; }
+  const dt=(now-lastTick)/1000; lastTick=now;
+  if(dt<=0) return;
+  m.clockSec+=dt; m.totalSec+=dt;
+  m.field.forEach(f=>{
+    const pp=m.perPlayer[f.pid];
+    pp.fieldSec+=dt; pp.stintSec+=dt; pp.pos[f.pos]+=dt;
+  });
+  m.perPlayer[m.keeperId].keeperSec+=dt;
+  m.perPlayer[m.keeperId].stintSec+=dt;
+  m.bench.forEach(pid=>m.perPlayer[pid].benchSec+=dt);
+
+  // period end?
+  if(m.clockSec>=m.periodSec){
+    m.running=false;
+    if(m.period>=m.periods){ m.finished=true; logIt('Kampslutt!'); }
+    else { m.awaitingPeriod=true; logIt('Periode '+m.period+' ferdig.'); }
+    alertUser(); render(); return;
+  }
+  // sub due?
+  const left=(m.lastSubTotal+m.intervalSec+m.snoozeSec)-m.totalSec;
+  if(left<=0 && !dueAlerted){ dueAlerted=true; alertUser(); render(); }
+  else if(left>0) dueAlerted=false;
+
+  // lightweight per-tick UI update
+  const c=$('#clock'), n=$('#nextsub');
+  if(c) c.innerHTML=mmss(m.clockSec)+'<small> / '+mmss(m.periodSec)+'</small>';
+  if(n && !m.awaitingPeriod && !m.finished){
+    if(left<=0){ n.classList.add('due'); n.textContent='BYTTE NÅ'; }
+    else { n.classList.remove('due'); n.innerHTML='Neste bytte om <b>'+mmss(left)+'</b>'; }
+  }
+  if(++saveCounter>=10){ saveCounter=0; save(); }
+},500);
+
+/* ================= end match ================= */
+function endMatch(){
+  const m=curMatch(); if(!m) return;
+  const players=[];
+  Object.entries(m.perPlayer).forEach(([pid,pp])=>{
+    const p=playerById(pid); if(!p) return;
+    p.stats.fieldSec+=pp.fieldSec;
+    p.stats.keeperSec+=pp.keeperSec;
+    p.stats.matches=(p.stats.matches||0)+1;
+    POSK.forEach(k=>p.stats.pos[k]+=pp.pos[k]);
+    players.push({name:p.name, fieldSec:pp.fieldSec, keeperSec:pp.keeperSec, pos:{...pp.pos}});
+  });
+  players.sort((a,b)=>(b.fieldSec+b.keeperSec)-(a.fieldSec+a.keeperSec));
+  db.history.unshift({date:new Date().toISOString(), durationSec:m.totalSec, players, log:[...m.log].reverse()});
+  if(db.history.length>40) db.history.pop();
+  db.match=null; db.setup=null;
+  releaseWakeLock();
+  view='hist'; render();
+}
+function confirmAbort(){
+  showModal(`<h3>Avslutte kampen?</h3>
+    <button class="primary" onclick="closeModal();endMatch()">Lagre statistikk og avslutt</button>
+    <button class="warn" onclick="closeModal();db.match=null;db.setup=null;releaseWakeLock();render()">Forkast kampen (ingen lagring)</button>
+    <button class="ghost" onclick="closeModal()">Avbryt</button>`);
+}
+
+/* ================= plan preview ================= */
+function showPlanPreview(){
+  const s=db.setup;
+  // simulate a full match with the chosen settings
+  const sim={
+    field:s.field.map(f=>({pid:f.pid,pos:f.pos,stint:0})),
+    bench:[...s.bench],
+    posT:{}, tot:{},
+  };
+  const all=[...s.field.map(f=>f.pid),...s.bench];
+  all.forEach(pid=>{ sim.posT[pid]={...(playerById(pid).stats.pos)}; sim.tot[pid]=0; });
+  const matchSec=s.periods*s.periodMin*60;
+  const S=Math.max(1,Math.min(s.subsPer==='auto'?Math.min(2,sim.bench.length||1):s.subsPer, sim.bench.length||1, 4));
+  const events=[];
+  let t=0;
+  while(t+s.intervalSec<matchSec && events.length<60){
+    t+=s.intervalSec;
+    sim.field.forEach(f=>{ f.stint+=s.intervalSec; sim.posT[f.pid][f.pos]+=s.intervalSec; sim.tot[f.pid]+=s.intervalSec; });
+    if(!sim.bench.length){ events.push({t,txt:'Rullér posisjoner'}); continue; }
+    const plan=planSub(sim.field, sim.bench, S, (pid,k)=>sim.posT[pid][k]);
+    const parts=[];
+    const outPids=plan.moves.map(mv=>mv.outPid);
+    sim.field=sim.field.filter(f=>!outPids.includes(f.pid));
+    plan.moves.forEach(mv=>{
+      sim.field.push({pid:mv.inPid,pos:mv.pos,stint:0});
+      sim.bench=sim.bench.filter(x=>x!==mv.inPid);
+      parts.push(esc(pname(mv.inPid))+' inn ('+posName(mv.pos)+') for '+esc(pname(mv.outPid)));
+    });
+    (plan.shifts||[]).forEach(sh=>{
+      const f=sim.field.find(x=>x.pid===sh.pid);
+      if(f){ f.pos=sh.to; parts.push(esc(pname(sh.pid))+' → '+posName(sh.to)); }
+    });
+    outPids.sort((a,b)=>sim.tot[a]-sim.tot[b]).forEach(pid=>sim.bench.push(pid));
+    events.push({t,txt:parts.join(' · ')});
+  }
+  // remaining time credit
+  const rest=matchSec-t;
+  sim.field.forEach(f=>{ sim.tot[f.pid]+=rest; });
+  const totRows=all.map(pid=>({pid,min:Math.round(sim.tot[pid]/60)})).sort((a,b)=>b.min-a.min)
+    .map(r=>`<tr><td>${esc(pname(r.pid))}</td><td class="num">${r.min} min</td></tr>`).join('');
+  showModal(`<h3>Bytteplan (veiledende)</h3>
+    <div style="max-height:50vh;overflow-y:auto">
+    <table>${events.map(e=>`<tr><td class="num" style="width:52px;color:var(--dim)">${mmss(e.t)}</td><td>${e.txt}</td></tr>`).join('')}</table>
+    <h2 style="margin-top:14px">Beregnet spilletid (utespill)</h2>
+    <table>${totRows}</table>
+    <p class="hint">Planen justerer seg selv underveis ved skader og manuelle bytter. Keepertid kommer i tillegg.</p>
+    </div>
+    <button class="ghost" style="margin-top:10px" onclick="closeModal()">Lukk</button>`);
+}
+
+/* ================= match history / summaries ================= */
+function posBarFrom(pos){
+  const segs=POSK.map(k=>({k,s:pos[k]||0})).filter(x=>x.s>0);
+  const tot=Math.max(1,segs.reduce((a,x)=>a+x.s,0));
+  return `<div class="posbar">${segs.map(x=>`<i style="width:${Math.round(100*x.s/tot)}%;background:${posColor(x.k)}"></i>`).join('')}</div>`;
+}
+function histHtml(){
+  if(!db.history.length) return `<h2>Kampoppsummeringer</h2><div class="card"><p class="hint" style="margin:0">
+    Ingen kamper lagret ennå. Når du avslutter en kamp havner oppsummeringen her:
+    faktisk spilletid per spiller, posisjoner og byttelogg.</p></div>`;
+  const cards=db.history.map((h,i)=>{
+    const d=new Date(h.date);
+    const dateStr=d.toLocaleDateString('nb-NO',{weekday:'long',day:'numeric',month:'long'})+' '+
+      d.toLocaleTimeString('nb-NO',{hour:'2-digit',minute:'2-digit'});
+    const rows=h.players.map(p=>`<tr><td>${esc(p.name)}</td>
+      <td>${posBarFrom(p.pos)}</td>
+      <td class="num">${p.keeperSec>=30?Math.round(p.keeperSec/60):''}</td>
+      <td class="num"><b>${Math.round((p.fieldSec+p.keeperSec)/60)}</b></td></tr>`).join('');
+    return `<details class="card" ${i===0?'open':''} style="padding:0">
+      <summary style="padding:14px 12px; cursor:pointer; font-weight:700">${dateStr}
+        <span style="color:var(--dim); font-weight:400"> · ${h.players.length} spillere · ${Math.round(h.durationSec/60)} min</span></summary>
+      <div style="padding:0 12px 12px">
+        <table><tr><th>Spiller</th><th>Posisjoner</th><th class="num">Keeper (min)</th><th class="num">Spilt (min)</th></tr>${rows}</table>
+        <div class="legend">${POS.map(p=>`<span><i style="background:${p.c}"></i>${p.n}</span>`).join('')}</div>
+        <details style="margin-top:10px"><summary style="cursor:pointer;color:var(--dim);font-size:13px">Byttelogg</summary>
+          <div class="loglist" style="margin-top:6px">${(h.log||[]).map(esc).join('<br>')}</div></details>
+      </div></details>`;
+  }).join('');
+  return `<h2>Kampoppsummeringer</h2>${cards}
+    <button class="ghost big" onclick="clearHistory()">Slett historikk og navneminne</button>`;
+}
+function clearHistory(){
+  if(!confirm('Slette all kamphistorikk og alle huskede navn?')) return;
+  db.history=[]; db.roster=[];
+  render();
+}
+
+/* ================= modal / utils ================= */
+function showModal(html){
+  $('#modalhost').innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`;
+}
+function closeModal(){ $('#modalhost').innerHTML=''; }
+function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* alerts: sound + vibration + flash */
+let audioCtx=null;
+function initAudio(){ try{ if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)(); if(audioCtx.state==='suspended') audioCtx.resume(); }catch(e){} }
+function beep(){
+  try{
+    if(!audioCtx) return;
+    [0,0.3].forEach(off=>{
+      const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+      o.frequency.value=880; o.type='sine';
+      g.gain.setValueAtTime(0.001,audioCtx.currentTime+off);
+      g.gain.exponentialRampToValueAtTime(0.4,audioCtx.currentTime+off+0.02);
+      g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+off+0.25);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(audioCtx.currentTime+off); o.stop(audioCtx.currentTime+off+0.3);
+    });
+  }catch(e){}
+}
+function alertUser(){
+  beep();
+  try{ navigator.vibrate && navigator.vibrate([250,120,250]); }catch(e){}
+  const f=$('#flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+}
+
+/* wake lock: keep screen on during match */
+let wakeLock=null;
+async function requestWakeLock(){
+  try{ if('wakeLock' in navigator) wakeLock=await navigator.wakeLock.request('screen'); }catch(e){}
+}
+function releaseWakeLock(){ try{ wakeLock&&wakeLock.release(); wakeLock=null; }catch(e){} }
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible' && db.match && db.match.running) requestWakeLock();
+});
+
+/* service worker for offline use */
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+
+render();
+</script>
+</body>
+</html>

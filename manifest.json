@@ -1,0 +1,12 @@
+{
+  "name": "Bytteplan – Bjerke IL J8/J9",
+  "short_name": "Bytteplan",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0e1512",
+  "theme_color": "#0b3d20",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
