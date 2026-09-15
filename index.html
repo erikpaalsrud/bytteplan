@@ -96,6 +96,7 @@
   .seg{display:flex; background:var(--card2); border-radius:10px; padding:3px; gap:3px}
   .seg button{flex:1; padding:9px 4px; border-radius:8px; background:transparent; font-size:14px; font-weight:600; color:var(--dim)}
   .seg button.on{background:var(--green); color:var(--ink)}
+  .segsm button{font-size:12px; padding:8px 1px}
   .field-label{font-size:12px; color:var(--dim); margin:10px 0 6px; font-weight:700; text-transform:uppercase; letter-spacing:.6px}
   .hint{font-size:13px; color:var(--dim); line-height:1.5}
   .flash{position:fixed; inset:0; background:var(--amber); opacity:0; pointer-events:none; z-index:40}
@@ -250,16 +251,18 @@ function setupHtml(){
       </div>
     </div>
 
-    ${presentIds.length? `<h2>Favorittposisjon (valgfritt)</h2>
+    ${presentIds.length? `<h2>Spillertype (valgfritt)</h2>
     <div class="card">
-      <p class="hint" style="margin-top:0">Brukes bare i <b>siste periode</b>: da får spillere favorittposisjonen sin når de byttes inn – glimtplassen. Hvem som spiller og hvor lenge påvirkes ikke.</p>
+      <p class="hint" style="margin-top:0"><b>🌱 Ny</b>: uerfaren spiller som holder seg til én (maks to) posisjoner gjennom hele kampen – har nok med seg selv.
+      <b>Favorittposisjon</b>: brukes bare i siste periode (glimtplassen). Hvem som spiller og hvor lenge påvirkes ikke av noen av delene.</p>
       ${presentIds.map(id=>{
         const p=playerById(id);
         return `<div class="row" style="margin-bottom:6px">
-          <span style="flex:1; font-weight:600">${esc(p.name)}</span>
-          <div class="seg" style="flex:2">
-            <button class="${!p.fav?'on':''}" onclick="setFav('${id}',null)">–</button>
-            ${POS.map(ps=>`<button class="${p.fav===ps.k?'on':''}" onclick="setFav('${id}','${ps.k}')">${ps.n.slice(0,4)}</button>`).join('')}
+          <span style="flex:1; font-weight:600; min-width:70px">${esc(p.name)}</span>
+          <div class="seg segsm" style="flex:2.4">
+            <button class="${!p.fav&&!p.ny?'on':''}" onclick="setMode('${id}',null)">–</button>
+            <button class="${p.ny?'on':''}" onclick="setMode('${id}','ny')">🌱 Ny</button>
+            ${POS.map(ps=>`<button class="${p.fav===ps.k?'on':''}" onclick="setMode('${id}','${ps.k}')">${ps.n.slice(0,3)}</button>`).join('')}
           </div></div>`;
       }).join('')}
     </div>`:''}
@@ -290,7 +293,7 @@ function setupCard(pid, pos, queueNo){
   const selCls = selected && selected.id===pid ? 'sel':'';
   const tag = pos ? `<span class="pos" style="background:${posColor(pos)}">${posName(pos)}</span>`
                   : `<span class="pos bnk">Benk ${queueNo}</span>`;
-  return `<div class="pcard ${selCls}" onclick="tapSetup('${pid}')">${tag}<span class="nm">${esc(pname(pid))}</span></div>`;
+  return `<div class="pcard ${selCls}" onclick="tapSetup('${pid}')">${tag}<span class="nm">${esc(pname(pid))}${isNy(pid)?' 🌱':''}</span></div>`;
 }
 function keeperCardHtml(pid, ctx){
   const selCls = selected && selected.id===pid ? 'sel':'';
@@ -302,7 +305,12 @@ function togglePresent(id){ const s=db.setup; s.present[id]=!s.present[id];
   if(!s.present[id] && s.keeperId===id) s.keeperId=null; s.field=null; s.bench=null; render(); }
 function setKeeper(id){ db.setup.keeperId=id; db.setup.field=null; db.setup.bench=null; render(); }
 function setOpt(k,v){ db.setup[k]=v; render(); }
-function setFav(pid,k){ const p=playerById(pid); if(p){ p.fav=k; render(); } }
+function setMode(pid,v){
+  const p=playerById(pid); if(!p) return;
+  if(v==='ny'){ p.ny=true; p.fav=null; }
+  else { p.ny=false; p.fav=v; }
+  render();
+}
 
 function suggestLineup(){
   const s=db.setup;
@@ -313,9 +321,11 @@ function suggestLineup(){
     return ta!==tb ? ta-tb : Math.random()-0.5;
   });
   const starters = out.slice(0,4);
-  // greedy global assignment: least-played position first
+  // greedy global assignment: least-played position first –
+  // except 🌱 players, who are seeded where they have played MOST (their anchor)
   let pairs=[];
-  starters.forEach(pid=>POSK.forEach(k=>pairs.push({pid,k,t:posTotal(null,pid,k)})));
+  starters.forEach(pid=>POSK.forEach(k=>pairs.push({pid,k,
+    t: isNy(pid) ? -posTotal(null,pid,k) : posTotal(null,pid,k)})));
   pairs.sort((a,b)=>a.t-b.t || Math.random()-0.5);
   const usedP=new Set(), usedK=new Set(), field=[];
   for(const pr of pairs){
@@ -473,7 +483,7 @@ function livePcard(f){
   const star = favActive(m) && favOf(f.pid)===f.pos ? ' ⭐' : '';
   return `<div class="pcard ${selCls}" onclick="tapLive('${f.pid}')">
     <span class="pos" style="background:${posColor(f.pos)}">${posName(f.pos)}</span>
-    <span class="nm">${esc(pname(f.pid))}${star}</span>
+    <span class="nm">${esc(pname(f.pid))}${isNy(f.pid)?' 🌱':''}${star}</span>
     <span class="tm">inne <b>${mmss(pp.stintSec)}</b><br>tot ${mmss(pp.fieldSec)}</span></div>`;
 }
 function liveBench(pid,i){
@@ -481,7 +491,7 @@ function liveBench(pid,i){
   const selCls = selected && selected.id===pid ? 'sel':'';
   return `<div class="pcard ${selCls}" onclick="tapLive('${pid}')">
     <span class="pos bnk">${i===0?'Neste inn':'Benk '+(i+1)}</span>
-    <span class="nm">${esc(pname(pid))}</span>
+    <span class="nm">${esc(pname(pid))}${isNy(pid)?' 🌱':''}</span>
     <span class="tm">spilt <b>${mmss(pp.fieldSec)}</b></span></div>`;
 }
 function fairnessTable(m){
@@ -511,21 +521,27 @@ function subsCount(m){
    Outs = longest current stint (fairness). Ins take their least-played position
    globally – if a staying player holds it, that player shifts to a vacated spot.
    The epsilon prefers vacated positions on ties to avoid needless shuffling.
-   fav (optional, pid→posK): favourite positions trump the least-played rule –
-   only passed in the final period ("glimtplassen"), never affects who plays. */
-function planSub(field, bench, S, ptot, fav){
-  const favBonus=(pid,k)=> (fav && fav(pid)===k) ? -1e7 : 0;
+   pref (optional, pid→posK): preferred position that trumps the least-played
+   rule – favourite (final period only) or a 🌱-player's anchor (whole match).
+   sticky (optional, pid→bool): 🌱 players – their held position is locked so
+   incoming players won't displace them. Never affects who plays or how long. */
+function planSub(field, bench, S, ptot, pref, sticky){
+  pref = pref || (()=>null);
+  sticky = sticky || (()=>false);
   const outs=[...field].sort((a,b)=>b.stint-a.stint).slice(0,S);
   const outSet=new Set(outs.map(o=>o.pid));
   const stayers=field.filter(f=>!outSet.has(f.pid));
   const ins=bench.slice(0,S);
   const vacated=new Set(outs.map(o=>o.pos));
+  const lockedPos=new Set(stayers.filter(s=>sticky(s.pid)).map(s=>s.pos));
   const taken=new Set();
   const moves=ins.map((pid,i)=>{
     let best=null;
     for(const k of POSK){
       if(taken.has(k)) continue;
-      const score=ptot(pid,k)+(vacated.has(k)?0:0.001)+favBonus(pid,k);
+      let score=ptot(pid,k)+(vacated.has(k)?0:0.001);
+      if(pref(pid)===k) score-=1e7;
+      if(lockedPos.has(k)) score+=2e7;
       if(!best||score<best.score) best={k,score};
     }
     taken.add(best.k);
@@ -538,7 +554,8 @@ function planSub(field, bench, S, ptot, fav){
     let best=null;
     for(const k of freePos){
       if(shifts.some(x=>x.to===k)) continue;
-      const score=ptot(s.pid,k)+favBonus(s.pid,k);
+      let score=ptot(s.pid,k);
+      if(pref(s.pid)===k) score-=1e7;
       if(!best||score<best.score) best={k,score};
     }
     if(best) shifts.push({pid:s.pid, from:s.pos, to:best.k});
@@ -547,21 +564,34 @@ function planSub(field, bench, S, ptot, fav){
 }
 function favActive(m){ return m.period===m.periods; }
 function favOf(pid){ return playerById(pid)?.fav || null; }
+function isNy(pid){ return !!(playerById(pid)||{}).ny; }
+/* a 🌱 player's anchor: current position if on the field,
+   otherwise the position they have most time in (match + season) */
+function anchorOf(m,pid){
+  const f=m.field.find(x=>x.pid===pid);
+  if(f) return f.pos;
+  let best=null, bt=0;
+  POSK.forEach(k=>{ const t=posTotal(m,pid,k); if(t>bt){ bt=t; best=k; } });
+  return best;
+}
 function computeNextSub(m){
   if(m.finished||m.awaitingPeriod) return null;
   if(m.bench.length===0){
-    // no bench: suggest rotating positions so everyone still covers all positions
-    const moves = m.field.map((f,i)=>({rotPid:f.pid, from:f.pos, to:m.field[(i+1)%m.field.length].pos}));
+    // no bench: rotate positions among the non-🌱 players so they still get variety
+    const rot=m.field.filter(f=>!isNy(f.pid));
+    if(rot.length<2) return {rotation:true, moves:[]};
+    const moves = rot.map((f,i)=>({rotPid:f.pid, from:f.pos, to:rot[(i+1)%rot.length].pos}));
     return {rotation:true, moves};
   }
   const S=subsCount(m);
   const field=m.field.map(f=>({pid:f.pid,pos:f.pos,stint:m.perPlayer[f.pid].stintSec}));
-  return planSub(field, m.bench, S, (pid,k)=>posTotal(m,pid,k), favActive(m)?favOf:null);
+  const pref=pid=> isNy(pid) ? anchorOf(m,pid) : (favActive(m)?favOf(pid):null);
+  return planSub(field, m.bench, S, (pid,k)=>posTotal(m,pid,k), pref, isNy);
 }
 function subMovesHtml(ns){
-  if(ns.rotation) return `<div class="mv">Ingen benk – rullér posisjoner:</div>` +
+  if(ns.rotation) return `<div class="mv">${ns.moves.length?'Ingen benk – rullér posisjoner:':'Ingen benk, og 🌱-spillerne står i ro – ingen rotasjon.'}</div>` +
     ns.moves.map(mv=>`<div class="mv"><b>${esc(pname(mv.rotPid))}</b>: ${posName(mv.from)} → ${posName(mv.to)}</div>`).join('') +
-    `<div class="row" style="margin-top:8px"><button class="grow primary" onclick="execSub()">Utført ✓</button></div>`;
+    `<div class="row" style="margin-top:8px"><button class="grow primary" onclick="execSub()">${ns.moves.length?'Utført ✓':'OK ✓'}</button></div>`;
   return ns.moves.map(mv=>`<div class="mv">🟢 <b>${esc(pname(mv.inPid))}</b> inn som ${posName(mv.pos)} — 🔴 ${esc(pname(mv.outPid))} ut</div>`).join('')
     + (ns.shifts||[]).map(sh=>`<div class="mv">↔️ ${esc(pname(sh.pid))} flytter til ${posName(sh.to)}</div>`).join('');
 }
@@ -569,8 +599,8 @@ function execSub(){
   const m=curMatch(); const ns=computeNextSub(m); if(!ns) return;
   if(ns.rotation){
     const posByPid={}; ns.moves.forEach(mv=>posByPid[mv.rotPid]=mv.to);
-    m.field.forEach(f=>{ f.pos=posByPid[f.pid]; });
-    logIt('Posisjonsrullering utført.');
+    m.field.forEach(f=>{ if(posByPid[f.pid]) f.pos=posByPid[f.pid]; });
+    logIt(ns.moves.length?'Posisjonsrullering utført.':'Ingen rotasjon (🌱-spillere står i ro).');
   } else {
     const outPids=ns.moves.map(mv=>mv.outPid);
     m.field = m.field.filter(f=>!outPids.includes(f.pid));
@@ -878,7 +908,14 @@ function showPlanPreview(){
     sim.field.forEach(f=>{ f.stint+=s.intervalSec; sim.posT[f.pid][f.pos]+=s.intervalSec; sim.tot[f.pid]+=s.intervalSec; });
     if(!sim.bench.length){ events.push({t,txt:'Rullér posisjoner'}); continue; }
     const inLastPeriod = Math.min(s.periods, Math.floor(t/(s.periodMin*60))+1)===s.periods;
-    const plan=planSub(sim.field, sim.bench, S, (pid,k)=>sim.posT[pid][k], inLastPeriod?favOf:null);
+    const simAnchor=pid=>{
+      const f=sim.field.find(x=>x.pid===pid);
+      if(f) return f.pos;
+      let best=null,bt=0; POSK.forEach(k=>{ const v=sim.posT[pid][k]; if(v>bt){bt=v;best=k;} });
+      return best;
+    };
+    const pref=pid=> isNy(pid) ? simAnchor(pid) : (inLastPeriod?favOf(pid):null);
+    const plan=planSub(sim.field, sim.bench, S, (pid,k)=>sim.posT[pid][k], pref, isNy);
     const parts=[];
     const outPids=plan.moves.map(mv=>mv.outPid);
     sim.field=sim.field.filter(f=>!outPids.includes(f.pid));
