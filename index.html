@@ -198,7 +198,7 @@ function addTodayPlayer(){
 
 /* ================= setup ================= */
 function defaultSetup(){
-  return {present:{}, keeperId:null, periods:2, periodMin:25, breakMin:5, intervalSec:180, subsPer:'auto',
+  return {present:{}, keeperId:null, opponent:'', periods:2, periodMin:25, breakMin:5, intervalSec:180, subsPer:'auto',
           field:null, bench:null};
 }
 function setupHtml(){
@@ -266,6 +266,9 @@ function setupHtml(){
 
     <h2>Kampoppsett</h2>
     <div class="card">
+      <div class="field-label" style="margin-top:0">Motstander (valgfritt)</div>
+      <input type="text" value="${esc(s.opponent||'')}" placeholder="F.eks. Gjerdrum" autocomplete="off"
+        onchange="setOpt('opponent',this.value)">
       <div class="field-label">Perioder</div>
       <div class="seg">${[2,3].map(n=>`<button class="${s.periods===n?'on':''}" onclick="setOpt('periods',${n})">${n}</button>`).join('')}</div>
       <div class="field-label">Periodelengde</div>
@@ -354,6 +357,7 @@ function startMatch(){
     field:s.field.map(f=>({pid:f.pid,pos:f.pos})),
     bench:[...s.bench],
     unavailable:[],
+    opponent:(s.opponent||'').trim(), goalsFor:0, goalsAgainst:0, injuries:[],
     periods:s.periods, periodSec:s.periodMin*60, breakSec:(s.breakMin||5)*60,
     intervalSec:s.intervalSec, subsPer:s.subsPer,
     period:1, clockSec:0, totalSec:0, running:false,
@@ -424,6 +428,25 @@ function liveHtml(){
         <div class="seg grow">${[['auto','Auto'],[1,'1'],[2,'2'],[3,'3']].map(([v,l])=>
           `<button class="${m.subsPer===v?'on':''}" onclick="setSubsPerLive(${typeof v==='string'?`'${v}'`:v})">${l}</button>`).join('')}</div>
       </div>`}
+    </div>
+    <div class="card" style="display:flex; align-items:center; gap:6px; padding:10px 12px">
+      <div style="flex:1; text-align:center">
+        <div class="field-label" style="margin:0 0 4px">Bjerke</div>
+        <div class="row" style="justify-content:center; flex-wrap:nowrap; gap:6px">
+          <button class="ghost" style="padding:6px 13px" onclick="goal('for',-1)">−</button>
+          <span style="font-size:28px; font-weight:800; min-width:34px; font-variant-numeric:tabular-nums">${m.goalsFor||0}</span>
+          <button style="padding:6px 13px" onclick="goal('for',1)">+</button>
+        </div>
+      </div>
+      <span style="color:var(--dim); font-weight:800; font-size:20px">–</span>
+      <div style="flex:1; text-align:center">
+        <div class="field-label" style="margin:0 0 4px">${esc(m.opponent||'Motstander')}</div>
+        <div class="row" style="justify-content:center; flex-wrap:nowrap; gap:6px">
+          <button class="ghost" style="padding:6px 13px" onclick="goal('mot',-1)">−</button>
+          <span style="font-size:28px; font-weight:800; min-width:34px; font-variant-numeric:tabular-nums">${m.goalsAgainst||0}</span>
+          <button style="padding:6px 13px" onclick="goal('mot',1)">+</button>
+        </div>
+      </div>
     </div>
     ${banner}
     <h2>På banen</h2>
@@ -570,6 +593,13 @@ function execSub(){
   render();
 }
 function snooze(){ const m=curMatch(); m.snoozeSec+=60; dueAlerted=false; render(); }
+function goal(side,d){
+  const m=curMatch(); if(!m) return;
+  if(side==='for') m.goalsFor=Math.max(0,(m.goalsFor||0)+d);
+  else m.goalsAgainst=Math.max(0,(m.goalsAgainst||0)+d);
+  if(d>0) logIt('⚽ Mål til '+(side==='for'?'Bjerke':(m.opponent||'motstander'))+' — '+(m.goalsFor||0)+'–'+(m.goalsAgainst||0));
+  render();
+}
 function setSubsPerLive(v){
   const m=curMatch(); if(!m) return;
   m.subsPer=v;
@@ -637,6 +667,7 @@ function injurySub(pid){
   m.field.sort((a,b)=>POSK.indexOf(a.pos)-POSK.indexOf(b.pos));
   m.perPlayer[inPid].stintSec=0;
   m.unavailable.push(pid);
+  (m.injuries=m.injuries||[]).push({name:pname(pid), t:m.totalSec});
   logIt('🚑 '+pname(pid)+' ut (skade). '+pname(inPid)+' inn ('+posName(f.pos)+').');
   render();
 }
@@ -811,11 +842,14 @@ function endMatch(){
     players.push({name:p.name, fieldSec:pp.fieldSec, keeperSec:pp.keeperSec, pos:{...pp.pos}});
   });
   players.sort((a,b)=>(b.fieldSec+b.keeperSec)-(a.fieldSec+a.keeperSec));
-  db.history.unshift({date:new Date().toISOString(), durationSec:m.totalSec, players, log:[...m.log].reverse()});
+  db.history.unshift({date:new Date().toISOString(), durationSec:m.totalSec, players,
+    opponent:m.opponent||'', goalsFor:m.goalsFor||0, goalsAgainst:m.goalsAgainst||0,
+    injuries:(m.injuries||[]).map(x=>({name:x.name,t:x.t})), log:[...m.log].reverse()});
   if(db.history.length>40) db.history.pop();
   db.match=null; db.setup=null;
   releaseWakeLock();
   view='hist'; render();
+  openReport(0); // vis delbar kamprapport med en gang
 }
 function confirmAbort(){
   showModal(`<h3>Avslutte kampen?</h3>
@@ -889,14 +923,20 @@ function histHtml(){
     const d=new Date(h.date);
     const dateStr=d.toLocaleDateString('nb-NO',{weekday:'long',day:'numeric',month:'long'})+' '+
       d.toLocaleTimeString('nb-NO',{hour:'2-digit',minute:'2-digit'});
+    const titleExtra=[h.opponent?('mot '+esc(h.opponent)):'',
+      typeof h.goalsFor==='number'?(h.goalsFor+'–'+h.goalsAgainst):''].filter(Boolean).join(' · ');
     const rows=h.players.map(p=>`<tr><td>${esc(p.name)}</td>
       <td>${posBarFrom(p.pos)}</td>
       <td class="num">${p.keeperSec>=30?Math.round(p.keeperSec/60):''}</td>
       <td class="num"><b>${Math.round((p.fieldSec+p.keeperSec)/60)}</b></td></tr>`).join('');
     return `<details class="card" ${i===0?'open':''} style="padding:0">
       <summary style="padding:14px 12px; cursor:pointer; font-weight:700">${dateStr}
-        <span style="color:var(--dim); font-weight:400"> · ${h.players.length} spillere · ${Math.round(h.durationSec/60)} min</span></summary>
+        <span style="color:var(--dim); font-weight:400"> · ${titleExtra?titleExtra+' · ':''}${h.players.length} spillere</span></summary>
       <div style="padding:0 12px 12px">
+        <div class="row" style="margin-bottom:10px">
+          <button class="grow primary" onclick="openReport(${i})">📸 Rapport (ett skjermbilde)</button>
+          <button class="grow" onclick="copyReport(${i},this)">📋 Kopier tekst</button>
+        </div>
         <table><tr><th>Spiller</th><th>Posisjoner</th><th class="num">Keeper (min)</th><th class="num">Spilt (min)</th></tr>${rows}</table>
         <div class="legend">${POS.map(p=>`<span><i style="background:${p.c}"></i>${p.n}</span>`).join('')}</div>
         <details style="margin-top:10px"><summary style="cursor:pointer;color:var(--dim);font-size:13px">Byttelogg</summary>
@@ -905,6 +945,62 @@ function histHtml(){
   }).join('');
   return `<h2>Kampoppsummeringer</h2>${cards}
     <button class="ghost big" onclick="clearHistory()">Slett historikk og navneminne</button>`;
+}
+/* one-screen match report for sharing with the other team leaders (Spond) */
+function reportBits(h){
+  const d=new Date(h.date);
+  const dateStr=d.toLocaleDateString('nb-NO',{weekday:'long',day:'numeric',month:'long'});
+  const keepers=h.players.filter(p=>p.keeperSec>=30)
+    .map(p=>p.name+' '+Math.round(p.keeperSec/60)+"'");
+  const inj=(h.injuries||[]).map(x=>x.name+' (ut '+mmss(x.t)+')');
+  const hasScore=typeof h.goalsFor==='number';
+  return {dateStr, keepers, inj, hasScore};
+}
+function openReport(i){
+  const h=db.history[i]; if(!h) return;
+  const b=reportBits(h);
+  const playerRows=h.players.map(p=>
+    `<div style="display:flex; justify-content:space-between; gap:8px; padding:3px 0; border-bottom:1px solid var(--line)">
+      <span style="font-weight:600">${esc(p.name)}${p.keeperSec>=30?' 🧤':''}</span>
+      <span style="font-variant-numeric:tabular-nums; color:var(--dim)"><b style="color:var(--text)">${Math.round((p.fieldSec+p.keeperSec)/60)}'</b></span>
+    </div>`).join('');
+  $('#modalhost').innerHTML=`<div class="modal-bg" style="align-items:center; padding:14px" onclick="if(event.target===this)closeModal()">
+    <div class="modal" style="border-radius:20px; max-height:94vh; overflow-y:auto; padding:18px 16px">
+      <div style="text-align:center">
+        <img src="crest.png" alt="" style="height:46px">
+        <h3 style="margin:6px 0 2px">Kamprapport</h3>
+        <div class="hint">Bjerke IL J8/J9 · ${b.dateStr}</div>
+        ${h.opponent?`<div style="font-weight:700; margin-top:2px">mot ${esc(h.opponent)}</div>`:''}
+        ${b.hasScore?`<div style="font-size:38px; font-weight:800; margin:4px 0; font-variant-numeric:tabular-nums">${h.goalsFor} – ${h.goalsAgainst}</div>`:''}
+        <div class="hint">${h.players.length} spillere · ${Math.round(h.durationSec/60)} min spilletid</div>
+      </div>
+      ${b.keepers.length?`<div style="margin:10px 0 2px">🧤 <b>Keeper:</b> ${esc(b.keepers.join(', '))}</div>`:''}
+      <div style="margin:8px 0 2px">🚑 <b>Skader:</b> ${b.inj.length?esc(b.inj.join(', ')):'ingen'}</div>
+      <div class="field-label">Spilletid</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 18px">${playerRows}</div>
+      <p class="hint" style="text-align:center; margin-bottom:0">Ta skjermbilde og del 📸</p>
+      <button class="ghost" style="width:100%; margin-top:10px" onclick="closeModal()">Lukk</button>
+    </div></div>`;
+}
+function reportText(h){
+  const b=reportBits(h);
+  const lines=['⚽ Kamprapport – Bjerke IL J8/J9', b.dateStr + (h.opponent?' mot '+h.opponent:'')];
+  if(b.hasScore) lines.push('Resultat: '+h.goalsFor+'–'+h.goalsAgainst);
+  lines.push(h.players.length+' spillere, '+Math.round(h.durationSec/60)+' min spilletid');
+  if(b.keepers.length) lines.push('🧤 Keeper: '+b.keepers.join(', '));
+  lines.push('🚑 Skader: '+(b.inj.length?b.inj.join(', '):'ingen'));
+  lines.push('');
+  lines.push('Spilletid:');
+  h.players.forEach(p=>lines.push('• '+p.name+' '+Math.round((p.fieldSec+p.keeperSec)/60)+"'"+(p.keeperSec>=30?' (keeper '+Math.round(p.keeperSec/60)+"')":'')));
+  return lines.join('\n');
+}
+function copyReport(i,btn){
+  const h=db.history[i]; if(!h) return;
+  const txt=reportText(h);
+  const done=()=>{ if(btn){ btn.textContent='Kopiert ✓'; setTimeout(()=>{btn.textContent='📋 Kopier tekst';},1500); } };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done).catch(()=>{ prompt('Kopier teksten:', txt); });
+  } else prompt('Kopier teksten:', txt);
 }
 function clearHistory(){
   if(!confirm('Slette all kamphistorikk og alle huskede navn?')) return;
