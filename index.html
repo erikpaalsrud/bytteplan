@@ -537,7 +537,10 @@ function planSub(field, bench, S, ptot, pref, sticky){
   const vacated=new Set(outs.map(o=>o.pos));
   const lockedPos=new Set(stayers.filter(s=>sticky(s.pid)).map(s=>s.pos));
   const taken=new Set();
-  const moves=ins.map((pid,i)=>{
+  // sticky (🌱) players pick first so a teammate entering in the same sub
+  // can't snatch their anchor position
+  const assign={};
+  [...ins].sort((a,b)=>(sticky(b)?1:0)-(sticky(a)?1:0)).forEach(pid=>{
     let best=null;
     for(const k of POSK){
       if(taken.has(k)) continue;
@@ -547,8 +550,9 @@ function planSub(field, bench, S, ptot, pref, sticky){
       if(!best||score<best.score) best={k,score};
     }
     taken.add(best.k);
-    return {inPid:pid, outPid:outs[i].pid, pos:best.k};
+    assign[pid]=best.k;
   });
+  const moves=ins.map((pid,i)=>({inPid:pid, outPid:outs[i].pid, pos:assign[pid]}));
   const kept=new Set(stayers.filter(s=>!taken.has(s.pos)).map(s=>s.pos));
   const freePos=POSK.filter(k=>!taken.has(k)&&!kept.has(k));
   const shifts=[];
