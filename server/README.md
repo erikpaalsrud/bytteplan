@@ -1,6 +1,6 @@
 # Bytteplan push server and Docker deployment
 
-Deployment is prepared, **not deployed**. Choose an always-on Docker host and domain later. The server serves both the app and `/api/push/*` on the same origin. GitHub Pages alone cannot run this service. No external database or paid notification provider is required; the device's browser push service delivers notifications.
+**Deployed on Railway** (project `talented-charisma`, service `bytteplan`): https://bytteplan-production.up.railway.app — git-connected to `main`, Dockerfile build, volume at `/app/data`, variables `PUBLIC_ORIGIN`, `VAPID_*` and `RAILWAY_RUN_UID=0` (Railway volumes mount root-owned, so the container runs as root there; the `USER node` directive still applies to self-hosted Docker). The Caddy/compose files below are for self-hosting and are unused on Railway. The server serves both the app and `/api/push/*` on the same origin. GitHub Pages alone cannot run this service. No external database or paid notification provider is required; the device's browser push service delivers notifications.
 
 ## Prepare once
 

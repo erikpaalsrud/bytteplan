@@ -21,7 +21,7 @@ Byttekøen tilstreber jevn utespilletid. Fast keeper, avrunding ved kampslutt, s
 
 ## Kjøring og kontroll
 
-For kun lokal kampføring kan mappen serveres statisk, også på GitHub Pages. For varsler mens telefonen er låst må appen og pushserveren kjøres sammen på HTTPS. Docker-oppsett, nøkkelgenerering og brukertest er beskrevet i [server/README.md](server/README.md). Hosting velges senere; løsningen er ikke deployet.
+Appen med pushserver kjører på Railway: **https://bytteplan-production.up.railway.app** (git-koblet; push til `main` deployer automatisk). For kun lokal kampføring kan mappen fortsatt serveres statisk, også på GitHub Pages — men varsler på låst telefon krever Railway-adressen. Selvhosting med Docker/Caddy, nøkkelgenerering og brukertest er beskrevet i [server/README.md](server/README.md).
 
 ```sh
 npm ci --ignore-scripts
