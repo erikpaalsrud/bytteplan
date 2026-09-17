@@ -52,6 +52,68 @@ for(const format of [3,5,7,9]){
     assert.equal(run('new Set(db.match.field.map(f=>f.pid)).size'),format===3?3:format-1);
   });
 }
+test('substitutions never move players staying on the field',()=>{
+  const run=app();seed(run,5);
+  run('startMatch();db.match.running=false;');
+  for(let i=0;i<6;i++){
+    const before=JSON.parse(run('JSON.stringify(db.match.field)'));
+    run('db.match.field.forEach(f=>db.match.perPlayer[f.pid].stintSec+=45);db.match.totalSec+=45;');
+    const plan=JSON.parse(run('JSON.stringify(computeNextSub(db.match))'));
+    assert.equal(plan.shifts.length,0);
+    const outPos=new Set(plan.moves.map(mv=>before.find(f=>f.pid===mv.outPid).pos));
+    for(const mv of plan.moves)assert.ok(outPos.has(mv.pos),'incoming player takes a vacated position');
+    run('execSub()');
+    const after=JSON.parse(run('JSON.stringify(db.match.field)'));
+    for(const f of after){const b=before.find(x=>x.pid===f.pid);if(b)assert.equal(f.pos,b.pos,'stayer kept position');}
+  }
+});
+test('empty bench proposes no rotation and mutes sub alerts',()=>{
+  const run=app();seed(run,5,1);
+  run('startMatch();db.match.running=false;');
+  run(`markUnavailable('${run('db.match.bench[0]')}')`);
+  assert.equal(run('db.match.bench.length'),0);
+  const before=JSON.parse(run('JSON.stringify(db.match.field)'));
+  const plan=JSON.parse(run('JSON.stringify(computeNextSub(db.match))'));
+  assert.equal(plan.rotation,true);assert.equal(plan.moves.length,0);
+  run('execSub()');
+  assert.deepEqual(JSON.parse(run('JSON.stringify(db.match.field)')),before);
+  run('alertPrefs().notifications=true;db.match.running=true;');
+  assert.equal(JSON.parse(run('JSON.stringify(pushPlan())')).some(e=>e.kind==='sub'),false);
+});
+test('🌱 anchor: holder is subbed out on stint ties and 🌱 re-enters at anchor',()=>{
+  const run=app();seed(run,5);
+  run("playerById(db.match?undefined:'x')");
+  run("const ny=db.roster.find(p=>db.setup.present[p.id]&&p.id!==db.setup.keeperId); ny.ny=true; ny.fav='V'; window.__ny=ny.id;");
+  run('suggestLineup();startMatch();db.match.running=false;');
+  const nyId=run('window.__ny');
+  assert.equal(run(`db.match.field.find(f=>f.pid==='${nyId}')?.pos??null`)==='V'||run(`db.match.bench.includes('${nyId}')`),true,'🌱 seeded at anchor or on bench');
+  run(`
+    // put 🌱 on bench front with everyone on field at equal stints
+    if(db.match.field.some(f=>f.pid==='${nyId}')){
+      const other=db.match.bench[0];manualSwap('${nyId}',other);
+    }
+    db.match.bench=db.match.bench.filter(x=>x!=='${nyId}');db.match.bench.unshift('${nyId}');
+    db.match.field.forEach(f=>db.match.perPlayer[f.pid].stintSec=300);db.match.totalSec+=300;
+  `);
+  const plan=JSON.parse(run('JSON.stringify(computeNextSub(db.match))'));
+  const mv=plan.moves.find(x=>x.inPid===nyId);
+  assert.equal(mv.pos,'V','🌱 enters at anchor');
+});
+test('early substitutions reset the interval timer, on-field swaps do not',()=>{
+  const run=app();seed(run,5);
+  run('startMatch();db.match.running=false;');
+  run('db.match.totalSec=100;db.match.lastSubTotal=0;');
+  run("manualSwap(db.match.field[0].pid, db.match.field[1].pid)");
+  assert.equal(run('db.match.lastSubTotal'),0,'on-field swap keeps timer');
+  run("manualSwap(db.match.field[0].pid, db.match.bench[0])");
+  assert.equal(run('db.match.lastSubTotal'),100,'bench swap resets timer');
+  run('db.match.totalSec=160;');
+  run("injurySub(db.match.field[0].pid)");
+  assert.equal(run('db.match.lastSubTotal'),160,'injury sub resets timer');
+  run('db.match.totalSec=220;');
+  run("tiredSub(db.match.field[0].pid)");
+  assert.equal(run('db.match.lastSubTotal'),220,'tired sub resets timer');
+});
 test('clock caps sleep and reload catch-up at period boundary, preserves zero break',()=>{
   const run=app();seed(run,5);run('startMatch();db.match.lastTickAt=Date.now()-600000; tick();');
   assert.equal(run('db.match.totalSec'),120);
