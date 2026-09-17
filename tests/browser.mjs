@@ -14,6 +14,8 @@ try{
  await page.route('**/api/push/devices/**',async route=>{if(route.request().method()==='PUT')schedules.push(route.request().postDataJSON());await route.fulfill({status:200,contentType:'application/json',body:'{"ok":true}'});});
  await page.goto('http://127.0.0.1:'+server.address().port);
  await page.getByRole('button',{name:'9er',exact:true}).click();
+ assert.match(await page.locator('#setup-summary').innerText(),/9er · 30 \+ 30 min/);
+ await page.locator('details.fold > summary').click();
  await page.locator('#opt-period-0').fill('17.5');
  await page.locator('#opt-period-0').press('Tab');
  await page.locator('#opt-period-1').fill('23');await page.locator('#opt-period-1').press('Tab');
@@ -52,6 +54,8 @@ try{
  assert.equal(await page.evaluate(async()=> (await caches.keys()).includes('unrelated-cache')),true);
  await page.getByRole('button',{name:'⚽ Kamp',exact:true}).click();
  await page.getByRole('button',{name:'3er',exact:true}).click();
+ assert.match(await page.locator('#setup-summary').innerText(),/3er · 20 min · 20 min spilletid/);
+ await page.locator('details.fold > summary').click();
  await page.locator('#opt-period-0').fill('11');
  await page.getByRole('button',{name:'Velg spillere →'}).click();
  assert.equal(await page.locator('#newname').count(),1,'Next works directly after editing a number');

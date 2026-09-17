@@ -303,21 +303,42 @@ function setupHtml(){
 function numericField(label,key,value,min,max,step=1){
   return `<label class="field-label" style="display:block" for="opt-${key}">${label}</label><input id="opt-${key}" type="number" min="${min}" max="${max}" step="${step}" value="${value}" onchange="setNumber('${key}',this)">`;
 }
+const FORMAT_DEFAULTS={3:{periods:1,len:20,breakMin:0,subsPer:3},5:{periods:2,len:25,breakMin:5,subsPer:'auto'},7:{periods:2,len:25,breakMin:5,subsPer:'auto'},9:{periods:2,len:30,breakMin:5,subsPer:'auto'}};
+function chipRow(label,options,current,action,fmt=String){
+  const opts=options.includes(current)?options:[...options,current].sort((a,b)=>a-b);
+  return `<div class="field-label">${label}</div><div class="seg" role="group" aria-label="${label}">${opts.map(v=>`<button class="${current===v?'on':''}" aria-pressed="${current===v}" onclick="${action}(${JSON.stringify(v)})">${fmt(v)}</button>`).join('')}</div>`;
+}
+function subsChips(s){
+  const cur=s.subsPer, all=['auto',...positions(s).map((_,i)=>i+1)];
+  return `<div class="field-label">Spillere per bytte</div><div class="seg" role="group" aria-label="Spillere per bytte">${all.map(v=>`<button class="${cur===v?'on':''}" aria-pressed="${cur===v}" onclick="setChip('subsPer',${JSON.stringify(v)})">${v==='auto'?'Auto':v}</button>`).join('')}</div>`;
+}
+function uniformLen(s){ const l=lengths(s); return l.every(n=>n===l[0]) ? l[0] : null; }
 function settingsHtml(s){
+  const uni=uniformLen(s);
   return `<h2>Sett opp kampen</h2><div class="card">
     <div class="field-label">Spillform</div><div class="seg">${[3,5,7,9].map(n=>`<button class="${formatOf(s)===n?'on':''}" aria-pressed="${formatOf(s)===n}" onclick="setFormat(${n})">${n}er</button>`).join('')}</div>
-    <p class="hint">${hasKeeper(s)?'Én keeper inkludert i antallet på banen.':'Tre utespillere, uten keeper.'}</p>
-    <label class="field-label" style="display:block" for="opponent">Motstander (valgfritt)</label>
-    <input id="opponent" type="text" value="${esc(s.opponent||'')}" placeholder="F.eks. Gjerdrum" onchange="setOpt('opponent',this.value)">
-    ${numericField('Antall perioder','periods',s.periods,1,12)}
-    <div id="period-fields">${lengths(s).map((n,i)=>numericField('Periode '+(i+1)+' – minutter','period-'+i,n,1,120,.5)).join('')}</div>
-    ${numericField('Pause mellom perioder – minutter','breakMin',s.breakMin,0,60,.5)}
-    ${numericField('Tid mellom bytter – sekunder','intervalSec',s.intervalSec,10,3600)}
-    <p class="hint">Velg tidene selv. 150 sekunder gir bytte hvert 2:30. Pauser teller ikke som spilletid.</p>
-    <label class="field-label" style="display:block" for="subs">Spillere per bytte</label><select id="subs" onchange="setOpt('subsPer',this.value==='auto'?'auto':Number(this.value))">
-    ${['auto',...positions(s).map((_,i)=>i+1)].map(n=>`<option value="${n}" ${s.subsPer===n?'selected':''}>${n==='auto'?'Auto (opptil 2)':n}</option>`).join('')}</select>
+    <p class="hint">${hasKeeper(s)?'Én keeper inkludert i antallet på banen.':'Tre utespillere, uten keeper.'} Vanlige tider er valgt – juster bare det som er annerledes i dag.</p>
+    ${chipRow('Perioder',[1,2,3,4],s.periods,'setPeriods')}
+    ${uni!==null?chipRow('Minutter per periode',[15,20,25,30,35],uni,'setPeriodLen'):`<div class="field-label">Minutter per periode</div><p class="hint">Ulike lengder: ${lengths(s).join(' + ')} min – endre under Egne tider.</p>`}
+    ${chipRow('Pause – minutter',[0,5,10],s.breakMin,'setBreak')}
+    ${chipRow('Tid mellom bytter',[120,150,180,240,300],s.intervalSec,'setIntervalSec',v=>mmss(v))}
+    ${subsChips(s)}
+    <details class="fold"><summary>Egne tider og motstander</summary>
+      <label class="field-label" style="display:block" for="opponent">Motstander (valgfritt)</label>
+      <input id="opponent" type="text" value="${esc(s.opponent||'')}" placeholder="F.eks. Gjerdrum" onchange="setOpt('opponent',this.value)">
+      ${numericField('Antall perioder','periods',s.periods,1,12)}
+      <div id="period-fields">${lengths(s).map((n,i)=>numericField('Periode '+(i+1)+' – minutter','period-'+i,n,1,120,.5)).join('')}</div>
+      ${numericField('Pause mellom perioder – minutter','breakMin',s.breakMin,0,60,.5)}
+      ${numericField('Tid mellom bytter – sekunder','intervalSec',s.intervalSec,10,3600)}
+      <p class="hint">150 sekunder gir bytte hvert 2:30. Pauser teller ikke som spilletid.</p>
+    </details>
     </div><button class="big primary" onclick="setupStep(2)">Velg spillere →</button>`;
 }
+function setChip(k,v){ db.setup[k]=v; save(); render(); }
+function setPeriods(n){ const s=db.setup; s.periodMinutes=Array.from({length:n},(_,i)=>lengths(s)[i]??lengths(s).at(-1)); s.periods=n; save(); render(); }
+function setPeriodLen(n){ const s=db.setup; s.periodMinutes=Array(s.periods).fill(n); s.periodMin=n; save(); render(); }
+function setBreak(n){ setChip('breakMin',n); }
+function setIntervalSec(n){ setChip('intervalSec',n); }
 function setNumber(key,input){
   if(!input.checkValidity() || !Number.isFinite(input.valueAsNumber)){ input.reportValidity(); return; }
   const value=input.valueAsNumber, s=db.setup;
@@ -328,7 +349,10 @@ function setNumber(key,input){
   $('#setup-summary').textContent=`${formatOf(s)}er · ${lengths(s).join(' + ')} min · ${lengths(s).reduce((a,b)=>a+b,0)} min spilletid`;
   save();
 }
-function setFormat(n){ const s=db.setup; s.format=n; s.field=null; s.bench=null; s.keeperId=null; s.subsPer='auto'; selected=null; render(); }
+function setFormat(n){ const s=db.setup; s.format=n; s.field=null; s.bench=null; s.keeperId=null; selected=null;
+  const d=FORMAT_DEFAULTS[n];
+  s.periods=d.periods; s.periodMin=d.len; s.periodMinutes=Array(d.periods).fill(d.len); s.breakMin=d.breakMin; s.subsPer=d.subsPer;
+  save(); render(); }
 function setupStep(n){
   if([...document.querySelectorAll('#main input[type=number]')].some(el=>!el.reportValidity())) return;
   const s=db.setup;
