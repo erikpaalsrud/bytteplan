@@ -1,0 +1,32 @@
+import {spawn} from 'node:child_process';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createServer} from 'node:net';
+import assert from 'node:assert/strict';
+import webpush from 'web-push';
+const reserve=createServer();await new Promise(r=>reserve.listen(0,'127.0.0.1',r));const port=reserve.address().port;await new Promise(r=>reserve.close(r));
+const dir=await mkdtemp(join(tmpdir(),'bytte-http-'));const keys=webpush.generateVAPIDKeys(),origin='http://localhost:'+port;
+const child=spawn(process.execPath,['server/index.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,PORT:String(port),PUBLIC_ORIGIN:origin,VAPID_PUBLIC_KEY:keys.publicKey,VAPID_PRIVATE_KEY:keys.privateKey,VAPID_SUBJECT:'mailto:test@example.com',DB_PATH:join(dir,'test.sqlite')},stdio:['ignore','pipe','pipe']});
+const base='http://127.0.0.1:'+port;
+try{
+ await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Server startup timeout')),5000);child.stdout.once('data',()=>{clearTimeout(timer);resolve();});child.once('exit',()=>{clearTimeout(timer);reject(new Error('Server exited'));});});
+ assert.equal((await fetch(base+'/healthz')).status,200);
+ assert.equal((await fetch(base+'/')).status,200);
+ assert.equal((await fetch(base+'/.env')).status,404);
+ assert.equal((await fetch(base+'/data/push.sqlite')).status,404);
+ const config=await (await fetch(base+'/api/push/config')).json();assert.equal(config.publicKey,keys.publicKey);
+ const post=(path,data,token,method='POST',requestOrigin=origin)=>fetch(base+'/api/push/'+path,{method,headers:{Origin:requestOrigin,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(data)});
+ const subscription={endpoint:'https://fcm.googleapis.com/fcm/send/test',keys:{p256dh:'B'.repeat(87),auth:'A'.repeat(22)}};
+ assert.equal((await post('register',{subscription},null,'POST','https://evil.test')).status,403);
+ const response=await post('register',{subscription});assert.equal(response.status,201);const device=await response.json();
+ const route='devices/'+device.id;
+ const plan={revision:1,events:[{id:'test-1',kind:'sub',at:Date.now()+60000}],silent:false};
+ assert.equal((await post(route,plan,'wrong','PUT')).status,401);
+ assert.equal((await post(route,plan,device.token,'PUT')).status,200);
+ assert.equal((await post(route,plan,device.token,'PUT')).status,409);
+ assert.equal((await post(route,{revision:2,events:[]},device.token,'PUT')).status,200);
+ assert.equal((await post(route,{},device.token,'DELETE')).status,200);
+ assert.equal((await post(route,{revision:3,events:[]},device.token,'PUT')).status,401);
+ console.log('Real HTTP server: health, static allowlist, registration, origin/auth, schedule revisions, cancellation and deletion passed.');
+}finally{child.kill('SIGTERM');await new Promise(r=>child.once('exit',r));await rm(dir,{recursive:true,force:true});}

@@ -1,20 +1,39 @@
-# Bytteplan – Bjerke IL J8/J9
+# Bytteplan – Bjerke IL
 
-Kampdags-app for innbytter i 5er-fotball. Lages for trenerteamet på J8/J9.
+Kampdags-app (PWA) for trenerteamet. Norsk grensesnitt, offline-støtte og lokal lagring, med valgfri server for pushvarsler på låst telefon.
 
-- Skriv inn dagens spillere (huskes til neste kamp), velg keeper og kampoppsett
-- Appen foreslår startoppstilling og en bytteplan der alle får lik spilletid og
-  er innom alle posisjoner i løpet av kampen
-- Valgfri favorittposisjon per spiller – brukes bare i siste periode
-  («glimtplassen»), og påvirker aldri hvem som spiller eller hvor lenge
-- Kampklokke med varsel når det er byttetid; antall spillere per bytte (1/2/3/auto)
-  kan justeres direkte i kampbildet
-- Skadebytte og «sliten – kort pause» med ett trykk, manuelt keeperbytte
-  og full overstyring
-- Faktisk spilletid per spiller vises live; kampoppsummering lagres etterpå
-- Farger og emblem fra Bjerke IL (bjerke-il.no)
+1. **Kampen:** Velg 3er, 5er, 7er eller 9er, motstander og egne tider.
+2. **Spillere:** Legg til navn eller velg huskede spillere. Velg keeper i 5er/7er/9er. Spillertype og favorittposisjon er valgfrie.
+3. **Oppstilling:** Se og juster oppstillingen, forhåndsvis bytteplanen, og start kampen.
 
-**Personvern:** Alle navn og all statistikk lagres kun lokalt i nettleseren på
-trenerens telefon (localStorage). Ingenting sendes til noen server.
+3er bruker tre utespillere uten keeper. De øvrige formatene inkluderer én keeper. Formasjonene er faste forslag; spillere kan bytte plass.
 
-Ren statisk side (PWA, funker offline) – hostes på GitHub Pages.
+- 1–12 perioder, hver med egen lengde på 1–120 minutter (halvminuttssteg).
+- Pause på 0–60 minutter og bytteintervall på 10–3600 sekunder.
+- Velg antall spillere per bytte, eller Auto (opptil to).
+- Byttekø med posisjonsvariasjon, skadebytte, kort pause og manuelle bytter.
+- Kampklokke, faktisk spilletid, resultat og delbar kamprapport.
+- Eksisterende 5er-kamper og historikk beholdes.
+
+Byttekøen tilstreber jevn utespilletid. Fast keeper, avrunding ved kampslutt, skader og manuelle bytter kan gi ulik total spilletid. Forhåndsvisningen forutsetter samme keeper og bytter til oppsatt tid. Periodetid og pauser er trenerens valg, ikke validering mot turneringsregler.
+
+**Personvern:** Navn og statistikk lagres i localStorage på enheten. Når pushvarsler aktiveres, lagres enhetens pushabonnement og varseltider på serveren, uten spillernavn. Kopiering og deling av rapport skjer på trenerens initiativ. Nettleserdata kan slettes av brukeren eller nettleseren; kopier rapporter du vil beholde. Varsler i bakgrunnen avhenger av nettleseren. Klokka tar igjen forløpt tid ved retur, begrenset til periodens slutt.
+
+## Kjøring og kontroll
+
+For kun lokal kampføring kan mappen serveres statisk, også på GitHub Pages. For varsler mens telefonen er låst må appen og pushserveren kjøres sammen på HTTPS. Docker-oppsett, nøkkelgenerering og brukertest er beskrevet i [server/README.md](server/README.md). Hosting velges senere; løsningen er ikke deployet.
+
+```sh
+npm ci --ignore-scripts
+npm test
+```
+
+Mobil nettlesertest krever Playwright og Chromium installert i testmiljøet:
+
+```sh
+node tests/browser.mjs
+# Eller pek til en eksisterende Playwright-modul:
+PLAYWRIGHT_MODULE=/absolutt/sti/til/playwright/index.mjs node tests/browser.mjs
+```
+
+Nettlesertesten bruker en lokal server og skriver skjermbilder til `/private/tmp/bytte-*.png` på macOS. Se `REVIEW.md` for funn, rettelser og gjenværende begrensninger.

@@ -1,0 +1,8 @@
+{
+  "name": "bytteplan",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=24"},
+  "scripts": {"start": "node --env-file-if-exists=.env server/index.mjs", "test": "node --test tests/*.test.cjs tests/*.test.mjs", "keys": "node server/generate-keys.mjs"},
+  "dependencies": {"web-push": "3.6.7"}
+}

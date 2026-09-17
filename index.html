@@ -2,7 +2,7 @@
 <html lang="nb">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#1a2f92">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="crest.png" type="image/png">
@@ -96,6 +96,11 @@
   .seg{display:flex; background:var(--card2); border-radius:10px; padding:3px; gap:3px}
   .seg button{flex:1; padding:9px 4px; border-radius:8px; background:transparent; font-size:14px; font-weight:600; color:var(--dim)}
   .seg button.on{background:var(--green); color:var(--ink)}
+  .segsm{flex-wrap:wrap}
+  :focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+  .nm{overflow-wrap:anywhere;min-width:0}
+  .modal{max-height:92dvh;overflow-y:auto}
+  summary{cursor:pointer;padding:12px 0}
   .segsm button{font-size:12px; padding:8px 1px}
   .field-label{font-size:12px; color:var(--dim); margin:10px 0 6px; font-weight:700; text-transform:uppercase; letter-spacing:.6px}
   .hint{font-size:13px; color:var(--dim); line-height:1.5}
@@ -107,10 +112,11 @@
 <body>
 <header>
   <img src="crest.png" alt="Bjerke IL" style="height:38px">
-  <div style="flex:1"><h1>Bytteplan</h1><p class="sub">Bjerke IL · J8/J9 · 5er</p></div>
+  <div style="flex:1"><h1>Bytteplan</h1><p class="sub">Bjerke IL · Kampdag</p></div>
   <button onclick="showHelp()" style="background:rgba(255,255,255,.14); color:#fff; border-radius:50%;
     width:36px; height:36px; padding:0; font-size:18px; font-weight:800">?</button>
 </header>
+<p id="storage-warning" role="alert" class="card" hidden>Kunne ikke lagre på telefonen. Behold siden åpen og kopier kamprapporten før du lukker.</p>
 <main id="main"></main>
 <nav id="nav"></nav>
 <div class="flash" id="flash"></div>
@@ -119,15 +125,28 @@
 <script>
 'use strict';
 /* ================= data ================= */
-const POS = [
+const BASE_POS = [
   {k:'F', n:'Forsvar',  c:'#38c172'},
   {k:'V', n:'Venstre',  c:'#5aa9e6'},
   {k:'H', n:'Høyre',    c:'#f0b429'},
   {k:'S', n:'Spiss',    c:'#de1420'},
 ];
-const POSK = POS.map(p=>p.k);
-const posName = k => (POS.find(p=>p.k===k)||{}).n || k;
-const posColor = k => (POS.find(p=>p.k===k)||{}).c || '#888';
+const EXTRA_POS = [
+  {k:'FV',n:'Venstre back',c:'#38c172'}, {k:'FH',n:'Høyre back',c:'#63d69b'},
+  {k:'M',n:'Midtbane',c:'#b68af0'}, {k:'MV',n:'Venstre midt',c:'#9974dd'},
+  {k:'MH',n:'Høyre midt',c:'#cf9aef'}
+];
+const ALL_POS = [...BASE_POS, ...EXTRA_POS];
+const FORMATS = {3:['F','V','H'],5:['F','V','H','S'],7:['FV','FH','V','M','H','S'],9:['FV','F','FH','V','MV','MH','H','S']};
+let POS = BASE_POS, POSK = POS.map(p=>p.k);
+function formatOf(s){ return Number(s?.format)||5; }
+function hasKeeper(s){ return formatOf(s)!==3; }
+function positions(s){ return FORMATS[formatOf(s)]; }
+function syncPositions(){ POSK=positions(db.match||db.setup); POS=POSK.map(k=>ALL_POS.find(p=>p.k===k)); }
+function lengths(s){ return s.periodMinutes || Array(s.periods).fill(s.periodMin); }
+function periodLength(m){ return m.periodSeconds?.[m.period-1] ?? m.periodSec; }
+const posName = k => (ALL_POS.find(p=>p.k===k)||{}).n || k;
+const posColor = k => (ALL_POS.find(p=>p.k===k)||{}).c || '#888';
 
 const LS_KEY = 'bytteplan-v1';
 let db = loadDb();
@@ -138,11 +157,11 @@ function loadDb(){
   }catch(e){}
   return {roster:[], match:null, setup:null, history:[]};
 }
-function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(db)); }catch(e){} }
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(db)); document.getElementById('storage-warning').hidden=true; }catch(e){ document.getElementById('storage-warning').hidden=false; } queuePushSync(); }
 function uid(){ return Math.random().toString(36).slice(2,9); }
 function playerById(id){ return db.roster.find(p=>p.id===id); }
 function pname(id){ const p=playerById(id); return p?p.name:'?'; }
-function emptyStats(){ return {fieldSec:0, keeperSec:0, matches:0, pos:{F:0,V:0,H:0,S:0}}; }
+function emptyStats(){ return {fieldSec:0, keeperSec:0, matches:0, pos:Object.fromEntries(ALL_POS.map(p=>[p.k,0]))}; }
 
 /* time helpers */
 function mmss(sec){ sec=Math.max(0,Math.round(sec)); const m=Math.floor(sec/60), s=sec%60;
@@ -166,6 +185,7 @@ let view = db.match ? 'kamp' : 'kamp';
 let selected = null;          // tap-to-swap selection {ctx:'live'|'setup', id}
 const $ = sel => document.querySelector(sel);
 function render(){
+  syncPositions();
   renderNav();
   const m = $('#main');
   if(view==='kamp') m.innerHTML = db.match ? liveHtml() : setupHtml();
@@ -201,23 +221,24 @@ function addTodayPlayer(){
 
 /* ================= setup ================= */
 function defaultSetup(){
-  return {present:{}, keeperId:null, opponent:'', periods:2, periodMin:25, breakMin:5, intervalSec:180, subsPer:'auto',
+  return {format:5, step:1, periodMinutes:[25,25], present:{}, keeperId:null, opponent:'', periods:2, periodMin:25, breakMin:5, intervalSec:180, subsPer:'auto',
           field:null, bench:null};
 }
 function setupHtml(){
   if(!db.setup) db.setup = defaultSetup();
   const s = db.setup;
+  s.step=s.step||1; s.periodMinutes=lengths(s);
   const presentIds = db.roster.filter(p=>s.present[p.id]).map(p=>p.id);
-  const nOut = presentIds.length - (s.keeperId && s.present[s.keeperId] ? 1:0);
+  const ready = presentIds.length>=formatOf(s) && (!hasKeeper(s) || s.present[s.keeperId]);
 
   let lineupHtml='';
   if(s.field){
     lineupHtml = `
       <h2>Foreslått oppstilling</h2>
       <div class="card">
-        <p class="hint" style="margin-top:0">Trykk på to spillere for å bytte dem om. Første 4 starter, resten er byttekø i rekkefølge.</p>
+        <p class="hint" style="margin-top:0">Trykk på to spillere for å bytte dem om. ${positions(s).length} utespillere starter, resten er byttekø i rekkefølge.</p>
         <div class="field-label">På banen</div>
-        ${keeperCardHtml(s.keeperId,'setup')}
+        ${hasKeeper(s)?keeperCardHtml(s.keeperId,'setup'):''}
         ${s.field.map(f=>setupCard(f.pid,f.pos)).join('')}
         <div class="field-label">Byttekø</div>
         ${s.bench.map((pid,i)=>setupCard(pid,null,i+1)).join('')}
@@ -226,36 +247,41 @@ function setupHtml(){
           <button class="ghost grow" onclick="showPlanPreview()">Se bytteplan</button>
         </div>
       </div>
-      <button class="big primary" onclick="startMatch()">Start kamp ▶</button>
+      <button class="big primary" onclick="startMatch()">Start klokka og kampen ▶</button>
       <div style="height:20px"></div>`;
   }
 
-  return `
-    <h2>Ny kamp – hvem spiller i dag?</h2>
+  const progress = `<div class="seg" aria-label="Kampforberedelser">${['Kampen','Spillere','Oppstilling'].map((label,i)=>`<button class="${s.step===i+1?'on':''}" aria-current="${s.step===i+1?'step':'false'}" onclick="setupStep(${i+1})" ${i===2&&!ready?'disabled':''}>${i+1}. ${label}</button>`).join('')}</div>
+    <p class="hint" id="setup-summary">${formatOf(s)}er · ${lengths(s).join(' + ')} min · ${lengths(s).reduce((a,b)=>a+b,0)} min spilletid</p>`;
+  if(s.step===1) return progress + settingsHtml(s);
+  if(s.step===3) return progress + `<h2>Klar til kamp?</h2><p class="hint">${presentIds.length} spillere · ${presentIds.length-formatOf(s)} på benken. Klokka starter når du trykker start.</p>` + `<div id="alert-settings">${alertSettingsHtml()}</div>` + lineupHtml + `<button class="ghost big" onclick="setupStep(2)">← Endre spillere</button>`;
+  return progress + `
+    <h2>Hvem spiller i dag?</h2>
     <div class="card">
       <div class="row">
-        <input type="text" id="newname" class="grow" placeholder="Skriv navn …" autocomplete="off"
+        <input type="text" id="newname" aria-label="Spillerens navn" class="grow" placeholder="Skriv navn …" autocomplete="off"
           onkeydown="if(event.key==='Enter')addTodayPlayer()">
         <button class="primary" onclick="addTodayPlayer()">Legg til</button>
       </div>
       ${db.roster.length? `<div class="field-label">Trykk for å velge${db.roster.some(p=>p.stats.matches)? ' (husket fra tidligere kamper)':''}</div>
       <div class="chips">
-        ${db.roster.map(p=>`<span class="chip ${s.present[p.id]?'on':''}" onclick="togglePresent('${p.id}')">${esc(p.name)}</span>`).join('')}
+        ${db.roster.map(p=>`<button class="chip ${s.present[p.id]?'on':''}" aria-pressed="${!!s.present[p.id]}" onclick="togglePresent('${p.id}')">${esc(p.name)}</button>`).join('')}
       </div>`:''}
-      <p class="hint" style="margin-bottom:0">${presentIds.length} spillere valgt${presentIds.length>=5?' · '+(presentIds.length-5)+' på benken av gangen':''}. Navn lagres kun på denne telefonen.</p>
+      <p class="hint" style="margin-bottom:0">${presentIds.length} spillere valgt${presentIds.length>=formatOf(s)?' · '+(presentIds.length-formatOf(s))+' på benken av gangen':''}. Navn lagres kun på denne telefonen.</p>
     </div>
 
-    <h2>Keeper (1. periode)</h2>
+    ${hasKeeper(s)?`<h2>Keeper (1. periode)</h2>
     <div class="card">
       <div class="chips">
-        ${presentIds.map(id=>`<span class="chip ${s.keeperId===id?'on':''}" onclick="setKeeper('${id}')">${esc(pname(id))}</span>`).join('')
+        ${presentIds.map(id=>`<button class="chip ${s.keeperId===id?'on':''}" aria-pressed="${s.keeperId===id}" onclick="setKeeper('${id}')">${esc(pname(id))}</button>`).join('')
           || '<p class="hint" style="margin:0">Velg spillere først.</p>'}
       </div>
     </div>
 
-    ${presentIds.length? `<h2>Spillertype (valgfritt)</h2>
+    `:'<p class="hint">3er spilles uten keeper. Alle er med i bytterotasjonen.</p>'}
+    ${presentIds.length? `<details><summary>Spillertype og favorittposisjon (valgfritt)</summary>
     <div class="card">
-      <p class="hint" style="margin-top:0"><b>🌱 Ny</b>: uerfaren spiller som holder seg til én (maks to) posisjoner gjennom hele kampen – har nok med seg selv.
+      <p class="hint" style="margin-top:0"><b>🌱 Ny</b>: uerfaren spiller som holder seg til en kjent posisjon så langt det lar seg gjøre – har nok med seg selv.
       <b>Favorittposisjon</b>: brukes bare i siste periode (glimtplassen). Hvem som spiller og hvor lenge påvirkes ikke av noen av delene.</p>
       ${presentIds.map(id=>{
         const p=playerById(id);
@@ -264,32 +290,54 @@ function setupHtml(){
           <div class="seg segsm" style="flex:2.4">
             <button class="${!p.fav&&!p.ny?'on':''}" onclick="setMode('${id}',null)">–</button>
             <button class="${p.ny?'on':''}" onclick="setMode('${id}','ny')">🌱 Ny</button>
-            ${POS.map(ps=>`<button class="${p.fav===ps.k?'on':''}" onclick="setMode('${id}','${ps.k}')">${ps.n.slice(0,3)}</button>`).join('')}
+            ${POS.map(ps=>`<button title="${ps.n}" aria-label="Favorittposisjon: ${ps.n}" class="${p.fav===ps.k?'on':''}" onclick="setMode('${id}','${ps.k}')">${ps.n}</button>`).join('')}
           </div></div>`;
       }).join('')}
-    </div>`:''}
+    </div></details>`:''}
 
-    <h2>Kampoppsett</h2>
-    <div class="card">
-      <div class="field-label" style="margin-top:0">Motstander (valgfritt)</div>
-      <input type="text" value="${esc(s.opponent||'')}" placeholder="F.eks. Gjerdrum" autocomplete="off"
-        onchange="setOpt('opponent',this.value)">
-      <div class="field-label">Perioder</div>
-      <div class="seg">${[2,3].map(n=>`<button class="${s.periods===n?'on':''}" onclick="setOpt('periods',${n})">${n}</button>`).join('')}</div>
-      <div class="field-label">Periodelengde</div>
-      <div class="seg">${[15,20,25].map(n=>`<button class="${s.periodMin===n?'on':''}" onclick="setOpt('periodMin',${n})">${n} min</button>`).join('')}</div>
-      <div class="field-label">Pause mellom perioder</div>
-      <div class="seg">${[3,5,10].map(n=>`<button class="${(s.breakMin||5)===n?'on':''}" onclick="setOpt('breakMin',${n})">${n} min</button>`).join('')}</div>
-      <div class="field-label">Tid mellom bytter</div>
-      <div class="seg">${[[120,'2:00'],[150,'2:30'],[180,'3:00']].map(([v,l])=>`<button class="${s.intervalSec===v?'on':''}" onclick="setOpt('intervalSec',${v})">${l}</button>`).join('')}</div>
-      <div class="field-label">Spillere per bytte</div>
-      <div class="seg">${[['auto','Auto'],[1,'1'],[2,'2'],[3,'3']].map(([v,l])=>`<button class="${s.subsPer===v?'on':''}" onclick="setOpt('subsPer',${typeof v==='string'?`'${v}'`:v})">${l}</button>`).join('')}</div>
-    </div>
-
-    ${nOut>=4 && s.keeperId ?
-      (s.field ? lineupHtml : `<button class="big primary" onclick="suggestLineup()">Foreslå oppstilling →</button>`)
-      : `<p class="hint">Velg minst 5 spillere og en keeper for å komme videre.</p>`}
+    <button class="big primary" onclick="setupStep(3)" ${ready?'':'disabled'}>Se oppstilling →</button>
+    ${ready?'':`<p class="hint" role="status">Velg minst ${formatOf(s)} spillere${hasKeeper(s)?' og en keeper':''} for å komme videre.</p>`}
+    <button class="ghost big" onclick="setupStep(1)">← Kampinnstillinger</button>
     <div style="height:20px"></div>`;
+}
+function numericField(label,key,value,min,max,step=1){
+  return `<label class="field-label" style="display:block" for="opt-${key}">${label}</label><input id="opt-${key}" type="number" min="${min}" max="${max}" step="${step}" value="${value}" onchange="setNumber('${key}',this)">`;
+}
+function settingsHtml(s){
+  return `<h2>Sett opp kampen</h2><div class="card">
+    <div class="field-label">Spillform</div><div class="seg">${[3,5,7,9].map(n=>`<button class="${formatOf(s)===n?'on':''}" aria-pressed="${formatOf(s)===n}" onclick="setFormat(${n})">${n}er</button>`).join('')}</div>
+    <p class="hint">${hasKeeper(s)?'Én keeper inkludert i antallet på banen.':'Tre utespillere, uten keeper.'}</p>
+    <label class="field-label" style="display:block" for="opponent">Motstander (valgfritt)</label>
+    <input id="opponent" type="text" value="${esc(s.opponent||'')}" placeholder="F.eks. Gjerdrum" onchange="setOpt('opponent',this.value)">
+    ${numericField('Antall perioder','periods',s.periods,1,12)}
+    <div id="period-fields">${lengths(s).map((n,i)=>numericField('Periode '+(i+1)+' – minutter','period-'+i,n,1,120,.5)).join('')}</div>
+    ${numericField('Pause mellom perioder – minutter','breakMin',s.breakMin,0,60,.5)}
+    ${numericField('Tid mellom bytter – sekunder','intervalSec',s.intervalSec,10,3600)}
+    <p class="hint">Velg tidene selv. 150 sekunder gir bytte hvert 2:30. Pauser teller ikke som spilletid.</p>
+    <label class="field-label" style="display:block" for="subs">Spillere per bytte</label><select id="subs" onchange="setOpt('subsPer',this.value==='auto'?'auto':Number(this.value))">
+    ${['auto',...positions(s).map((_,i)=>i+1)].map(n=>`<option value="${n}" ${s.subsPer===n?'selected':''}>${n==='auto'?'Auto (opptil 2)':n}</option>`).join('')}</select>
+    </div><button class="big primary" onclick="setupStep(2)">Velg spillere →</button>`;
+}
+function setNumber(key,input){
+  if(!input.checkValidity() || !Number.isFinite(input.valueAsNumber)){ input.reportValidity(); return; }
+  const value=input.valueAsNumber, s=db.setup;
+  if(key.startsWith('period-')) s.periodMinutes[Number(key.slice(7))]=value;
+  else if(key==='periods'){ s.periodMinutes=Array.from({length:value},(_,i)=>lengths(s)[i]??lengths(s).at(-1)); s.periods=value; }
+  else s[key]=value;
+  if(key==='periods') $('#period-fields').innerHTML=lengths(s).map((n,i)=>numericField('Periode '+(i+1)+' – minutter','period-'+i,n,1,120,.5)).join('');
+  $('#setup-summary').textContent=`${formatOf(s)}er · ${lengths(s).join(' + ')} min · ${lengths(s).reduce((a,b)=>a+b,0)} min spilletid`;
+  save();
+}
+function setFormat(n){ const s=db.setup; s.format=n; s.field=null; s.bench=null; s.keeperId=null; s.subsPer='auto'; selected=null; render(); }
+function setupStep(n){
+  if([...document.querySelectorAll('#main input[type=number]')].some(el=>!el.reportValidity())) return;
+  const s=db.setup;
+  if(n===3){
+    const ids=db.roster.filter(p=>s.present[p.id]);
+    if(ids.length<formatOf(s)|| (hasKeeper(s)&&!s.present[s.keeperId])) return;
+    s.step=3; if(!s.field){ suggestLineup(); window.scrollTo(0,0); return; }
+  }
+  s.step=n; selected=null; render(); window.scrollTo(0,0);
 }
 function setupCard(pid, pos, queueNo){
   const selCls = selected && selected.id===pid ? 'sel':'';
@@ -301,12 +349,12 @@ function keeperCardHtml(pid, ctx){
   const selCls = selected && selected.id===pid ? 'sel':'';
   return `<div class="pcard ${selCls}" onclick="${ctx==='setup'?`tapSetup('${pid}')`:`tapLive('${pid}')`}">
     <span class="pos kpr">Keeper</span><span class="nm">${esc(pname(pid))}</span>
-    ${ctx==='live'? `<span class="tm"><b>${mmss(curMatch().perPlayer[pid].keeperSec)}</b> i mål</span>`:''}</div>`;
+    ${ctx==='live'? `<span class="tm" data-player-time="${pid}"><b>${mmss(curMatch().perPlayer[pid].keeperSec)}</b> i mål</span>`:''}</div>`;
 }
 function togglePresent(id){ const s=db.setup; s.present[id]=!s.present[id];
   if(!s.present[id] && s.keeperId===id) s.keeperId=null; s.field=null; s.bench=null; render(); }
 function setKeeper(id){ db.setup.keeperId=id; db.setup.field=null; db.setup.bench=null; render(); }
-function setOpt(k,v){ db.setup[k]=v; render(); }
+function setOpt(k,v){ db.setup[k]=v; save(); }
 function setMode(pid,v){
   const p=playerById(pid); if(!p) return;
   if(v==='ny'){ p.ny=true; p.fav=null; }
@@ -322,7 +370,7 @@ function suggestLineup(){
     const ta=playerById(a).stats.fieldSec, tb=playerById(b).stats.fieldSec;
     return ta!==tb ? ta-tb : Math.random()-0.5;
   });
-  const starters = out.slice(0,4);
+  const starters = out.slice(0,positions(s).length);
   // greedy global assignment: least-played position first –
   // except 🌱 players, who are seeded where they have played MOST (their anchor)
   let pairs=[];
@@ -336,7 +384,7 @@ function suggestLineup(){
     field.push({pid:pr.pid, pos:pr.k});
   }
   field.sort((a,b)=>POSK.indexOf(a.pos)-POSK.indexOf(b.pos));
-  s.field=field; s.bench=out.slice(4);
+  s.field=field; s.bench=out.slice(positions(s).length);
   selected=null; render();
 }
 function tapSetup(pid){
@@ -362,22 +410,22 @@ function curMatch(){ return db.match; }
 function startMatch(){
   const s=db.setup;
   const per={};
-  const all=[s.keeperId, ...s.field.map(f=>f.pid), ...s.bench];
-  all.forEach(pid=>per[pid]={fieldSec:0,keeperSec:0,benchSec:0,stintSec:0,pos:{F:0,V:0,H:0,S:0},wasKeeper:pid===s.keeperId});
+  const all=[s.keeperId, ...s.field.map(f=>f.pid), ...s.bench].filter(Boolean);
+  all.forEach(pid=>per[pid]={fieldSec:0,keeperSec:0,benchSec:0,stintSec:0,pos:Object.fromEntries(ALL_POS.map(p=>[p.k,0])),wasKeeper:pid===s.keeperId});
   db.match = {
-    keeperId:s.keeperId,
+    format:formatOf(s), keeperId:s.keeperId,
     field:s.field.map(f=>({pid:f.pid,pos:f.pos})),
     bench:[...s.bench],
     unavailable:[],
     opponent:(s.opponent||'').trim(), goalsFor:0, goalsAgainst:0, injuries:[],
-    periods:s.periods, periodSec:s.periodMin*60, breakSec:(s.breakMin||5)*60,
+    periods:s.periods, periodSeconds:lengths(s).map(n=>n*60), periodSec:lengths(s)[0]*60, breakSec:(s.breakMin??5)*60,
     intervalSec:s.intervalSec, subsPer:s.subsPer,
     period:1, clockSec:0, totalSec:0, running:false,
     lastSubTotal:0, snoozeSec:0, awaitingPeriod:false, finished:false,
     perPlayer:per, log:[],
     startedAt:new Date().toISOString(),
   };
-  logIt('Kampstart-oppsett klart. Keeper: '+pname(s.keeperId));
+  logIt('Kampstart-oppsett klart.'+(s.keeperId?' Keeper: '+pname(s.keeperId):' 3er uten keeper.'));
   initAudio(); toggleRun(true);
   view='kamp'; render();
 }
@@ -406,9 +454,9 @@ function liveHtml(){
     banner = `<div class="subbanner"><b>Periode ${m.period} ferdig – pause</b>
       <div class="${bOver?'due':''}" style="font-size:44px; font-weight:800; font-variant-numeric:tabular-nums; margin:6px 0; text-align:center">
         <span id="breakleft">${mmss(bLeft)}</span></div>
-      <p class="hint" style="margin-top:0">${bOver?'Pausen er over – start neste periode!':'igjen av pausen – fin tid til å varme opp neste keeper.'} ${keeperSuggestionText(m)}</p>
+      <p class="hint" style="margin-top:0">${bOver?'Pausen er over – start neste periode!':'igjen av pausen – fin tid til å varme opp neste keeper.'} ${hasKeeper(m)?keeperSuggestionText(m):''}</p>
       <div class="row">
-        <button class="grow" onclick="openKeeperModal()">Bytt keeper</button>
+        ${hasKeeper(m)?'<button class="grow" onclick="openKeeperModal()">Bytt keeper</button>':''}
         <button class="grow primary" onclick="startNextPeriod()">Start periode ${m.period+1} ▶</button>
       </div></div>`;
   } else if(ns && due){
@@ -426,8 +474,10 @@ function liveHtml(){
 
   return `
     <div class="card clockbox">
-      <div class="period">Periode ${m.period} av ${m.periods}</div>
-      <div class="clock" id="clock">${mmss(m.clockSec)}<small> / ${mmss(m.periodSec)}</small></div>
+      <p class="hint" id="awake-status" role="status">${wakeStatusText()}</p>
+      <p class="hint" id="push-status" role="status">${pushStatusText()}</p>
+      <div class="period">${formatOf(m)}er · Periode ${m.period} av ${m.periods}</div>
+      <div class="clock" id="clock">${mmss(m.clockSec)}<small> / ${mmss(periodLength(m))}</small></div>
       <div class="nextsub ${due?'due':''}" id="nextsub">${m.finished?'':(m.awaitingPeriod?'Pause':(due?'BYTTE NÅ':'Neste bytte om <b>'+mmss(left)+'</b>'))}</div>
       <div class="row" style="margin-top:12px; justify-content:center">
         ${m.finished||m.awaitingPeriod ? '' :
@@ -437,7 +487,7 @@ function liveHtml(){
       ${m.finished ? '' : `
       <div class="row" style="margin-top:12px; align-items:center">
         <span style="font-size:12px; color:var(--dim); font-weight:700; text-transform:uppercase; letter-spacing:.6px">Per bytte</span>
-        <div class="seg grow">${[['auto','Auto'],[1,'1'],[2,'2'],[3,'3']].map(([v,l])=>
+        <div class="seg grow">${[['auto','Auto'],...positions(m).map((_,i)=>[i+1,String(i+1)])].map(([v,l])=>
           `<button class="${m.subsPer===v?'on':''}" onclick="setSubsPerLive(${typeof v==='string'?`'${v}'`:v})">${l}</button>`).join('')}</div>
       </div>`}
     </div>
@@ -463,7 +513,7 @@ function liveHtml(){
     ${banner}
     <h2>På banen</h2>
     <div class="card">
-      ${keeperCardHtml(m.keeperId,'live')}
+      ${hasKeeper(m)?keeperCardHtml(m.keeperId,'live'):''}
       ${m.field.map(f=>livePcard(f)).join('')}
       <p class="hint" style="margin-bottom:0">Trykk på en spiller for skadebytte, keeperbytte eller manuelt bytte.</p>
     </div>
@@ -474,7 +524,7 @@ function liveHtml(){
     ${m.unavailable.length? `<h2>Utilgjengelig / skadet</h2><div class="card">${
       m.unavailable.map(pid=>`<div class="pcard" onclick="restorePlayer('${pid}')"><span class="pos bnk">Ute</span><span class="nm">${esc(pname(pid))}</span><span class="tm">trykk for å ta inn igjen</span></div>`).join('')}</div>`:''}
     <h2>Spilletid</h2>
-    <div class="card">${fairnessTable(m)}</div>
+    <div class="card" id="live-fairness">${fairnessTable(m)}</div>
     <h2>Logg</h2>
     <div class="card loglist">${m.log.slice(0,25).map(esc).join('<br>') || 'Ingen hendelser ennå.'}</div>
     <div style="height:10px"></div>`;
@@ -486,7 +536,7 @@ function livePcard(f){
   return `<div class="pcard ${selCls}" onclick="tapLive('${f.pid}')">
     <span class="pos" style="background:${posColor(f.pos)}">${posName(f.pos)}</span>
     <span class="nm">${esc(pname(f.pid))}${isNy(f.pid)?' 🌱':''}${star}</span>
-    <span class="tm">inne <b>${mmss(pp.stintSec)}</b><br>tot ${mmss(pp.fieldSec)}</span></div>`;
+    <span class="tm" data-player-time="${f.pid}">inne <b>${mmss(pp.stintSec)}</b><br>tot ${mmss(pp.fieldSec)}</span></div>`;
 }
 function liveBench(pid,i){
   const m=curMatch(); const pp=m.perPlayer[pid];
@@ -494,10 +544,10 @@ function liveBench(pid,i){
   return `<div class="pcard ${selCls}" onclick="tapLive('${pid}')">
     <span class="pos bnk">${i===0?'Neste inn':'Benk '+(i+1)}</span>
     <span class="nm">${esc(pname(pid))}${isNy(pid)?' 🌱':''}</span>
-    <span class="tm">spilt <b>${mmss(pp.fieldSec)}</b></span></div>`;
+    <span class="tm" data-player-time="${pid}">spilt <b>${mmss(pp.fieldSec)}</b></span></div>`;
 }
 function fairnessTable(m){
-  const ids=[m.keeperId, ...m.field.map(f=>f.pid), ...m.bench, ...m.unavailable];
+  const ids=[m.keeperId, ...m.field.map(f=>f.pid), ...m.bench, ...m.unavailable].filter(Boolean);
   const rows=ids.map(pid=>{
     const pp=m.perPlayer[pid]; if(!pp) return '';
     const played=pp.fieldSec+pp.keeperSec;
@@ -516,7 +566,7 @@ function fairnessTable(m){
 function subsCount(m){
   if(m.bench.length===0) return 0;
   const want = m.subsPer==='auto' ? Math.min(2, m.bench.length) : m.subsPer;
-  return Math.max(1, Math.min(want, m.bench.length, 4));
+  return Math.max(1, Math.min(want, m.bench.length, m.field.length));
 }
 /* Core sub planner, shared by live view and plan preview.
    field: [{pid,pos,stint}], bench: [pid], ptot(pid,posK) = accumulated time in position.
@@ -528,6 +578,8 @@ function subsCount(m){
    sticky (optional, pid→bool): 🌱 players – their held position is locked so
    incoming players won't displace them. Never affects who plays or how long. */
 function planSub(field, bench, S, ptot, pref, sticky){
+  const POSK=field.map(f=>f.pos);
+  S=Math.min(S,field.length,bench.length);
   pref = pref || (()=>null);
   sticky = sticky || (()=>false);
   const outs=[...field].sort((a,b)=>b.stint-a.stint).slice(0,S);
@@ -602,6 +654,7 @@ function subMovesHtml(ns){
     + (ns.shifts||[]).map(sh=>`<div class="mv">↔️ ${esc(pname(sh.pid))} flytter til ${posName(sh.to)}</div>`).join('');
 }
 function execSub(){
+  tick();
   const m=curMatch(); const ns=computeNextSub(m); if(!ns) return;
   if(ns.rotation){
     const posByPid={}; ns.moves.forEach(mv=>posByPid[mv.rotPid]=mv.to);
@@ -625,10 +678,11 @@ function execSub(){
       .forEach(pid=>m.bench.push(pid));
     m.field.sort((a,b)=>POSK.indexOf(a.pos)-POSK.indexOf(b.pos));
   }
-  m.lastSubTotal=m.totalSec; m.snoozeSec=0;
+  m.lastSubTotal=m.totalSec; m.snoozeSec=0; dueAlerted=false;
+  clearMatchNotifications();
   render();
 }
-function snooze(){ const m=curMatch(); m.snoozeSec+=60; dueAlerted=false; render(); }
+function snooze(){ clearMatchNotifications(); const m=curMatch(); m.snoozeSec+=60; dueAlerted=false; render(); }
 function goal(side,d){
   const m=curMatch(); if(!m) return;
   if(side==='for') m.goalsFor=Math.max(0,(m.goalsFor||0)+d);
@@ -654,6 +708,7 @@ function tapLive(pid){
   openPlayerModal(pid);
 }
 function manualSwap(a,b){
+  tick();
   const m=curMatch();
   const loc=pid=>{
     if(m.keeperId===pid) return {t:'k'};
@@ -679,12 +734,12 @@ function openPlayerModal(pid){
     btns += m.bench.length? `<button class="warn" onclick="injurySub('${pid}')">🚑 Skade – ut nå (${esc(pname(m.bench[0]))} inn)</button>`:'';
     btns += m.bench.length? `<button onclick="tiredSub('${pid}')">😮‍💨 Sliten – kort pause (inn igjen ved neste bytte)</button>`:'';
     btns += `<button onclick="startSwapSel('${pid}')">🔁 Bytt plass med … (trykk på en annen)</button>`;
-    btns += `<button onclick="makeKeeper('${pid}')">🧤 Gjør til keeper</button>`;
+    btns += !hasKeeper(m)?'':`<button onclick="makeKeeper('${pid}')">🧤 Gjør til keeper</button>`;
     btns += `<button class="warn ghost" onclick="markUnavailable('${pid}')">Sett som utilgjengelig</button>`;
   } else if(onBench){
     btns += `<button onclick="benchToFront('${pid}')">⏫ Flytt fremst i køen</button>`;
     btns += `<button onclick="startSwapSel('${pid}')">🔁 Bytt plass med … (trykk på en annen)</button>`;
-    btns += `<button onclick="makeKeeper('${pid}')">🧤 Gjør til keeper</button>`;
+    btns += !hasKeeper(m)?'':`<button onclick="makeKeeper('${pid}')">🧤 Gjør til keeper</button>`;
     btns += `<button class="warn ghost" onclick="markUnavailable('${pid}')">Sett som utilgjengelig</button>`;
   } else if(isKeeper){
     btns += `<button onclick="openKeeperModal()">🧤 Bytt keeper</button>`;
@@ -694,6 +749,7 @@ function openPlayerModal(pid){
 }
 function startSwapSel(pid){ closeModal(); selected={ctx:'live', id:pid}; render(); }
 function injurySub(pid){
+  tick();
   closeModal();
   const m=curMatch();
   const f=m.field.find(x=>x.pid===pid); if(!f||!m.bench.length) return;
@@ -708,6 +764,7 @@ function injurySub(pid){
   render();
 }
 function tiredSub(pid){
+  tick();
   closeModal();
   const m=curMatch();
   const f=m.field.find(x=>x.pid===pid); if(!f||!m.bench.length) return;
@@ -721,6 +778,7 @@ function tiredSub(pid){
   render();
 }
 function markUnavailable(pid){
+  tick();
   closeModal();
   const m=curMatch();
   if(m.field.some(f=>f.pid===pid)){ injurySubNoLog(pid); }
@@ -742,9 +800,14 @@ function injurySubNoLog(pid){
   m.field.sort((a,b)=>POSK.indexOf(a.pos)-POSK.indexOf(b.pos));
 }
 function restorePlayer(pid){
+  tick();
   const m=curMatch();
   m.unavailable=m.unavailable.filter(x=>x!==pid);
-  m.bench.push(pid);
+  const missing=positions(m).find(k=>!m.field.some(f=>f.pos===k));
+  if(!m.unavailable.includes(pid) && (m.field.some(f=>f.pid===pid)||m.bench.includes(pid))) return;
+  if(missing){ m.field.push({pid,pos:missing}); m.perPlayer[pid].stintSec=0; }
+  else m.bench.push(pid);
+  m.field.sort((a,b)=>positions(m).indexOf(a.pos)-positions(m).indexOf(b.pos));
   logIt(pname(pid)+' tilbake i byttekøen.');
   render();
 }
@@ -755,8 +818,10 @@ function benchToFront(pid){
   render();
 }
 function makeKeeper(pid){
+  tick();
   closeModal();
   const m=curMatch();
+  if(!hasKeeper(m)||pid===m.keeperId||m.unavailable.includes(pid)) return;
   const old=m.keeperId;
   const f=m.field.find(x=>x.pid===pid);
   if(f){ // field player becomes keeper; old keeper takes their position
@@ -791,25 +856,28 @@ function openKeeperModal(){
 /* ================= clock ================= */
 let lastTick=null, dueAlerted=false, saveCounter=0;
 function toggleRun(force){
+  tick();
   const m=curMatch(); if(!m||m.finished||m.awaitingPeriod) return;
   m.running = force===true ? true : force===false ? false : !m.running;
-  lastTick=null;
+  lastTick=Date.now(); m.lastTickAt=lastTick;
   if(m.running){ requestWakeLock(); initAudio(); logIt('Klokka startet.'); }
-  else logIt('Klokka pauset.');
+  else { releaseWakeLock(); clearMatchNotifications(); logIt('Klokka pauset.'); }
   render();
 }
 function startNextPeriod(){
   const m=curMatch();
+  if(!m?.awaitingPeriod||m.period>=m.periods) return;
+  clearMatchNotifications(); initAudio();
   m.period++; m.clockSec=0; m.awaitingPeriod=false; m.breakEndsAt=null;
   m.lastSubTotal=m.totalSec; m.snoozeSec=0; dueAlerted=false;
   // fresh stints for new period
   m.field.forEach(f=>m.perPlayer[f.pid].stintSec=0);
-  m.running=true; lastTick=null;
+  m.running=true; lastTick=Date.now(); m.lastTickAt=lastTick;
   requestWakeLock();
   logIt('Periode '+m.period+' startet.');
   render();
 }
-setInterval(()=>{
+function tick(){
   const m=curMatch();
   if(!m){ lastTick=null; return; }
   if(m.awaitingPeriod && m.breakEndsAt){
@@ -820,53 +888,69 @@ setInterval(()=>{
     if(left<=0 && !m.breakAlerted){
       m.breakAlerted=true;
       logIt('Pausen er over!');
-      alertUser(); render(); save();
+      alertUser('Pausen er over', 'Åpne Bytteplan og start neste periode.'); render(); save();
     }
     lastTick=null; return;
   }
   if(!m.running){ lastTick=null; return; }
   const now=Date.now();
-  if(lastTick===null){ lastTick=now; return; }
-  const dt=(now-lastTick)/1000; lastTick=now;
+  const previous=m.lastTickAt??lastTick??now;
+  const dt=Math.min((now-previous)/1000, Math.max(0,periodLength(m)-m.clockSec));
+  lastTick=now; m.lastTickAt=now;
   if(dt<=0) return;
   m.clockSec+=dt; m.totalSec+=dt;
   m.field.forEach(f=>{
     const pp=m.perPlayer[f.pid];
-    pp.fieldSec+=dt; pp.stintSec+=dt; pp.pos[f.pos]+=dt;
+    pp.fieldSec+=dt; pp.stintSec+=dt; pp.pos[f.pos]=(pp.pos[f.pos]||0)+dt;
   });
-  m.perPlayer[m.keeperId].keeperSec+=dt;
-  m.perPlayer[m.keeperId].stintSec+=dt;
+  if(m.keeperId){ m.perPlayer[m.keeperId].keeperSec+=dt; m.perPlayer[m.keeperId].stintSec+=dt; }
   m.bench.forEach(pid=>m.perPlayer[pid].benchSec+=dt);
 
   // period end?
-  if(m.clockSec>=m.periodSec){
+  if(m.clockSec>=periodLength(m)){
     m.running=false;
     if(m.period>=m.periods){ m.finished=true; logIt('Kampslutt!'); }
     else {
       m.awaitingPeriod=true;
-      m.breakEndsAt=Date.now()+(m.breakSec||300)*1000;
+      m.breakEndsAt=previous+dt*1000+(m.breakSec??300)*1000;
       m.breakAlerted=false;
-      logIt('Periode '+m.period+' ferdig. Pause '+mmss(m.breakSec||300)+'.');
+      logIt('Periode '+m.period+' ferdig. Pause '+mmss(m.breakSec??300)+'.');
     }
-    alertUser(); render(); return;
+    if(m.finished) releaseWakeLock();
+    alertUser(m.finished?'Kampslutt':'Perioden er ferdig',m.finished?'Åpne Bytteplan for å lagre kampen.':'Pause. Åpne Bytteplan før neste periode.'); render(); return;
   }
   // sub due?
   const left=(m.lastSubTotal+m.intervalSec+m.snoozeSec)-m.totalSec;
-  if(left<=0 && !dueAlerted){ dueAlerted=true; alertUser(); render(); }
+  if(left<=0 && !dueAlerted){
+    dueAlerted=true;
+    const key=`${m.period}:${m.lastSubTotal+m.intervalSec+m.snoozeSec}`;
+    if(m.lastAlertKey!==key){ m.lastAlertKey=key; alertUser('Byttetid', 'Åpne Bytteplan og bekreft byttet ved neste døde ball.'); }
+    render();
+  }
   else if(left>0) dueAlerted=false;
 
   // lightweight per-tick UI update
   const c=$('#clock'), n=$('#nextsub');
-  if(c) c.innerHTML=mmss(m.clockSec)+'<small> / '+mmss(m.periodSec)+'</small>';
+  if(c) c.innerHTML=mmss(m.clockSec)+'<small> / '+mmss(periodLength(m))+'</small>';
   if(n && !m.awaitingPeriod && !m.finished){
     if(left<=0){ n.classList.add('due'); n.textContent='BYTTE NÅ'; }
     else { n.classList.remove('due'); n.innerHTML='Neste bytte om <b>'+mmss(left)+'</b>'; }
   }
+  document.querySelectorAll('[data-player-time]').forEach(el=>{
+    const pid=el.dataset.playerTime, pp=m.perPlayer[pid];
+    if(!pp) return;
+    el.innerHTML=pid===m.keeperId?`<b>${mmss(pp.keeperSec)}</b> i mål`:
+      m.bench.includes(pid)?`spilt <b>${mmss(pp.fieldSec)}</b>`:
+      `inne <b>${mmss(pp.stintSec)}</b><br>tot ${mmss(pp.fieldSec)}`;
+  });
+  const fairness=$('#live-fairness'); if(fairness) fairness.innerHTML=fairnessTable(m);
   if(++saveCounter>=10){ saveCounter=0; save(); }
-},500);
+}
+setInterval(tick,500);
 
 /* ================= end match ================= */
 function endMatch(){
+  tick();
   const m=curMatch(); if(!m) return;
   const players=[];
   Object.entries(m.perPlayer).forEach(([pid,pp])=>{
@@ -874,87 +958,77 @@ function endMatch(){
     p.stats.fieldSec+=pp.fieldSec;
     p.stats.keeperSec+=pp.keeperSec;
     p.stats.matches=(p.stats.matches||0)+1;
-    POSK.forEach(k=>p.stats.pos[k]+=pp.pos[k]);
+    ALL_POS.forEach(({k})=>p.stats.pos[k]=(p.stats.pos[k]||0)+(pp.pos[k]||0));
     players.push({name:p.name, fieldSec:pp.fieldSec, keeperSec:pp.keeperSec, pos:{...pp.pos}});
   });
   players.sort((a,b)=>(b.fieldSec+b.keeperSec)-(a.fieldSec+a.keeperSec));
-  db.history.unshift({date:new Date().toISOString(), durationSec:m.totalSec, players,
+  db.history.unshift({format:formatOf(m), periodSeconds:m.periodSeconds||Array(m.periods).fill(m.periodSec), date:new Date().toISOString(), durationSec:m.totalSec, players,
     opponent:m.opponent||'', goalsFor:m.goalsFor||0, goalsAgainst:m.goalsAgainst||0,
     injuries:(m.injuries||[]).map(x=>({name:x.name,t:x.t})), log:[...m.log].reverse()});
   if(db.history.length>40) db.history.pop();
   db.match=null; db.setup=null;
-  releaseWakeLock();
+  releaseWakeLock(); clearMatchNotifications();
   view='hist'; render();
   openReport(0); // vis delbar kamprapport med en gang
 }
 function confirmAbort(){
   showModal(`<h3>Avslutte kampen?</h3>
     <button class="primary" onclick="closeModal();endMatch()">Lagre statistikk og avslutt</button>
-    <button class="warn" onclick="closeModal();db.match=null;db.setup=null;releaseWakeLock();render()">Forkast kampen (ingen lagring)</button>
+    <button class="warn" onclick="closeModal();db.match=null;db.setup=null;releaseWakeLock();clearMatchNotifications();render()">Forkast kampen (ingen lagring)</button>
     <button class="ghost" onclick="closeModal()">Avbryt</button>`);
 }
 
 /* ================= plan preview ================= */
+function simulatePlan(s){
+  const sim={format:formatOf(s), field:s.field.map(f=>({...f})),bench:[...s.bench],
+    perPlayer:{},period:1,periods:s.periods,subsPer:s.subsPer,finished:false,awaitingPeriod:false};
+  const all=[...sim.field.map(f=>f.pid),...sim.bench];
+  all.forEach(pid=>sim.perPlayer[pid]={...emptyStats(),stintSec:0});
+  const events=[]; let total=0;
+  const credit=dt=>sim.field.forEach(f=>{
+    const pp=sim.perPlayer[f.pid]; pp.fieldSec+=dt; pp.stintSec+=dt; pp.pos[f.pos]+=dt;
+  });
+  lengths(s).forEach((minutes,i)=>{
+    sim.period=i+1; sim.field.forEach(f=>sim.perPlayer[f.pid].stintSec=0);
+    let elapsed=0; const duration=minutes*60;
+    while(elapsed+s.intervalSec<duration){
+      credit(s.intervalSec); elapsed+=s.intervalSec;
+      const plan=computeNextSub(sim), parts=[];
+      if(plan.rotation){
+        plan.moves.forEach(mv=>{sim.field.find(f=>f.pid===mv.rotPid).pos=mv.to;});
+        parts.push(plan.moves.length?'Rullér posisjoner':'Ingen rotasjon');
+      } else {
+        const outs=plan.moves.map(mv=>mv.outPid);
+        sim.field=sim.field.filter(f=>!outs.includes(f.pid));
+        plan.moves.forEach(mv=>{
+          sim.field.push({pid:mv.inPid,pos:mv.pos}); sim.perPlayer[mv.inPid].stintSec=0;
+          sim.bench=sim.bench.filter(pid=>pid!==mv.inPid);
+          parts.push(esc(pname(mv.inPid))+' inn ('+posName(mv.pos)+') for '+esc(pname(mv.outPid)));
+        });
+        plan.shifts.forEach(sh=>{sim.field.find(f=>f.pid===sh.pid).pos=sh.to;parts.push(esc(pname(sh.pid))+' → '+posName(sh.to));});
+        outs.sort((a,b)=>sim.perPlayer[a].fieldSec-sim.perPlayer[b].fieldSec).forEach(pid=>sim.bench.push(pid));
+        sim.field.sort((a,b)=>positions(s).indexOf(a.pos)-positions(s).indexOf(b.pos));
+      }
+      events.push({t:total+elapsed,period:i+1,local:elapsed,txt:parts.join(' · ')});
+    }
+    credit(duration-elapsed); total+=duration;
+  });
+  return {events,all,sim,total};
+}
 function showPlanPreview(){
-  const s=db.setup;
-  // simulate a full match with the chosen settings
-  const sim={
-    field:s.field.map(f=>({pid:f.pid,pos:f.pos,stint:0})),
-    bench:[...s.bench],
-    posT:{}, tot:{},
-  };
-  const all=[...s.field.map(f=>f.pid),...s.bench];
-  all.forEach(pid=>{ sim.posT[pid]={...(playerById(pid).stats.pos)}; sim.tot[pid]=0; });
-  const matchSec=s.periods*s.periodMin*60;
-  const S=Math.max(1,Math.min(s.subsPer==='auto'?Math.min(2,sim.bench.length||1):s.subsPer, sim.bench.length||1, 4));
-  const events=[];
-  let t=0;
-  while(t+s.intervalSec<matchSec && events.length<60){
-    t+=s.intervalSec;
-    sim.field.forEach(f=>{ f.stint+=s.intervalSec; sim.posT[f.pid][f.pos]+=s.intervalSec; sim.tot[f.pid]+=s.intervalSec; });
-    if(!sim.bench.length){ events.push({t,txt:'Rullér posisjoner'}); continue; }
-    const inLastPeriod = Math.min(s.periods, Math.floor(t/(s.periodMin*60))+1)===s.periods;
-    const simAnchor=pid=>{
-      const f=sim.field.find(x=>x.pid===pid);
-      if(f) return f.pos;
-      let best=null,bt=0; POSK.forEach(k=>{ const v=sim.posT[pid][k]; if(v>bt){bt=v;best=k;} });
-      return best;
-    };
-    const pref=pid=> isNy(pid) ? simAnchor(pid) : (inLastPeriod?favOf(pid):null);
-    const plan=planSub(sim.field, sim.bench, S, (pid,k)=>sim.posT[pid][k], pref, isNy);
-    const parts=[];
-    const outPids=plan.moves.map(mv=>mv.outPid);
-    sim.field=sim.field.filter(f=>!outPids.includes(f.pid));
-    plan.moves.forEach(mv=>{
-      sim.field.push({pid:mv.inPid,pos:mv.pos,stint:0});
-      sim.bench=sim.bench.filter(x=>x!==mv.inPid);
-      parts.push(esc(pname(mv.inPid))+' inn ('+posName(mv.pos)+') for '+esc(pname(mv.outPid)));
-    });
-    (plan.shifts||[]).forEach(sh=>{
-      const f=sim.field.find(x=>x.pid===sh.pid);
-      if(f){ f.pos=sh.to; parts.push(esc(pname(sh.pid))+' → '+posName(sh.to)); }
-    });
-    outPids.sort((a,b)=>sim.tot[a]-sim.tot[b]).forEach(pid=>sim.bench.push(pid));
-    events.push({t,txt:parts.join(' · ')});
-  }
-  // remaining time credit
-  const rest=matchSec-t;
-  sim.field.forEach(f=>{ sim.tot[f.pid]+=rest; });
-  const totRows=all.map(pid=>({pid,min:Math.round(sim.tot[pid]/60)})).sort((a,b)=>b.min-a.min)
-    .map(r=>`<tr><td>${esc(pname(r.pid))}</td><td class="num">${r.min} min</td></tr>`).join('');
-  showModal(`<h3>Bytteplan (veiledende)</h3>
-    <div style="max-height:50vh;overflow-y:auto">
-    <table>${events.map(e=>`<tr><td class="num" style="width:52px;color:var(--dim)">${mmss(e.t)}</td><td>${e.txt}</td></tr>`).join('')}</table>
-    <h2 style="margin-top:14px">Beregnet spilletid (utespill)</h2>
-    <table>${totRows}</table>
-    <p class="hint">Planen justerer seg selv underveis ved skader og manuelle bytter. Keepertid kommer i tillegg.</p>
-    </div>
-    <button class="ghost" style="margin-top:10px" onclick="closeModal()">Lukk</button>`);
+  const {events,all,sim}=simulatePlan(db.setup);
+  const rows=all.map(pid=>`<tr><td>${esc(pname(pid))}</td><td class="num">${mmss(sim.perPlayer[pid].fieldSec)}</td></tr>`).join('');
+  showModal(`<h3>Bytteplan (veiledende)</h3><div style="max-height:60vh;overflow-y:auto">
+    <table>${events.slice(0,200).map(e=>`<tr><td>Periode ${e.period}<br>${mmss(e.local)}</td><td>${e.txt}</td></tr>`).join('')}</table>
+    ${events.length>200?'<p class="hint">Viser de første 200 byttene. Alle er med i beregnet spilletid.</p>':''}
+    <h2>Beregnet spilletid (utespill)</h2><table>${rows}</table>
+    <p class="hint">Forutsetter bytter til oppsatt tid${hasKeeper(db.setup)?' og samme keeper hele kampen':''}. Pauser er ikke med. Keeperbytter og manuelle endringer påvirker fordelingen.</p></div>
+    <button class="ghost" onclick="closeModal()">Lukk</button>`);
 }
 
 /* ================= match history / summaries ================= */
 function posBarFrom(pos){
-  const segs=POSK.map(k=>({k,s:pos[k]||0})).filter(x=>x.s>0);
+  const segs=ALL_POS.map(({k})=>({k,s:pos[k]||0})).filter(x=>x.s>0);
   const tot=Math.max(1,segs.reduce((a,x)=>a+x.s,0));
   return `<div class="posbar">${segs.map(x=>`<i style="width:${Math.round(100*x.s/tot)}%;background:${posColor(x.k)}"></i>`).join('')}</div>`;
 }
@@ -974,14 +1048,14 @@ function histHtml(){
       <td class="num"><b>${Math.round((p.fieldSec+p.keeperSec)/60)}</b></td></tr>`).join('');
     return `<details class="card" ${i===0?'open':''} style="padding:0">
       <summary style="padding:14px 12px; cursor:pointer; font-weight:700">${dateStr}
-        <span style="color:var(--dim); font-weight:400"> · ${titleExtra?titleExtra+' · ':''}${h.players.length} spillere</span></summary>
+        <span style="color:var(--dim); font-weight:400"> · ${titleExtra?titleExtra+' · ':''}${h.format||5}er · ${h.players.length} spillere</span></summary>
       <div style="padding:0 12px 12px">
         <div class="row" style="margin-bottom:10px">
           <button class="grow primary" onclick="openReport(${i})">📸 Rapport (ett skjermbilde)</button>
           <button class="grow" onclick="copyReport(${i},this)">📋 Kopier tekst</button>
         </div>
         <table><tr><th>Spiller</th><th>Posisjoner</th><th class="num">Keeper (min)</th><th class="num">Spilt (min)</th></tr>${rows}</table>
-        <div class="legend">${POS.map(p=>`<span><i style="background:${p.c}"></i>${p.n}</span>`).join('')}</div>
+        <div class="legend">${positions(h).map(k=>ALL_POS.find(p=>p.k===k)).map(p=>`<span><i style="background:${p.c}"></i>${p.n}</span>`).join('')}</div>
         <details style="margin-top:10px"><summary style="cursor:pointer;color:var(--dim);font-size:13px">Byttelogg</summary>
           <div class="loglist" style="margin-top:6px">${(h.log||[]).map(esc).join('<br>')}</div></details>
       </div></details>`;
@@ -1008,14 +1082,14 @@ function openReport(i){
       <span style="font-variant-numeric:tabular-nums; color:var(--dim)"><b style="color:var(--text)">${Math.round((p.fieldSec+p.keeperSec)/60)}'</b></span>
     </div>`).join('');
   $('#modalhost').innerHTML=`<div class="modal-bg" style="align-items:center; padding:14px" onclick="if(event.target===this)closeModal()">
-    <div class="modal" style="border-radius:20px; max-height:94vh; overflow-y:auto; padding:18px 16px">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Kampvalg" style="border-radius:20px; max-height:94vh; overflow-y:auto; padding:18px 16px">
       <div style="text-align:center">
         <img src="crest.png" alt="" style="height:46px">
         <h3 style="margin:6px 0 2px">Kamprapport</h3>
         <div class="hint">Bjerke IL J8/J9 · ${b.dateStr}</div>
         ${h.opponent?`<div style="font-weight:700; margin-top:2px">mot ${esc(h.opponent)}</div>`:''}
         ${b.hasScore?`<div style="font-size:38px; font-weight:800; margin:4px 0; font-variant-numeric:tabular-nums">${h.goalsFor} – ${h.goalsAgainst}</div>`:''}
-        <div class="hint">${h.players.length} spillere · ${Math.round(h.durationSec/60)} min spilletid</div>
+        <div class="hint">${h.format||5}er · ${h.players.length} spillere · ${Math.round(h.durationSec/60)} min spilletid</div>
       </div>
       ${b.keepers.length?`<div style="margin:10px 0 2px">🧤 <b>Keeper:</b> ${esc(b.keepers.join(', '))}</div>`:''}
       <div style="margin:8px 0 2px">🚑 <b>Skader:</b> ${b.inj.length?esc(b.inj.join(', ')):'ingen'}</div>
@@ -1029,7 +1103,7 @@ function reportText(h){
   const b=reportBits(h);
   const lines=['⚽ Kamprapport – Bjerke IL J8/J9', b.dateStr + (h.opponent?' mot '+h.opponent:'')];
   if(b.hasScore) lines.push('Resultat: '+h.goalsFor+'–'+h.goalsAgainst);
-  lines.push(h.players.length+' spillere, '+Math.round(h.durationSec/60)+' min spilletid');
+  lines.push((h.format||5)+'er · '+h.players.length+' spillere, '+Math.round(h.durationSec/60)+' min spilletid');
   if(b.keepers.length) lines.push('🧤 Keeper: '+b.keepers.join(', '));
   lines.push('🚑 Skader: '+(b.inj.length?b.inj.join(', '):'ingen'));
   lines.push('');
@@ -1046,8 +1120,9 @@ function copyReport(i,btn){
   } else prompt('Kopier teksten:', txt);
 }
 function clearHistory(){
+  if(db.match){ showModal('<h3>Avslutt kampen først</h3><p class="hint">Spillerne brukes i kampen som pågår.</p><button onclick="closeModal()">Lukk</button>'); return; }
   if(!confirm('Slette all kamphistorikk og alle huskede navn?')) return;
-  db.history=[]; db.roster=[];
+  db.history=[]; db.roster=[]; db.setup=null;
   render();
 }
 
@@ -1057,18 +1132,18 @@ function showHelp(){
     <span style="font-size:20px; line-height:1.3">${emoji}</span>
     <div><b>${title}</b><div class="hint" style="margin-top:1px">${txt}</div></div></div>`;
   $('#modalhost').innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeModal()">
-    <div class="modal" style="max-height:92vh; overflow-y:auto">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Kampvalg" style="max-height:92vh; overflow-y:auto">
       <h3>Slik funker Bytteplan</h3>
-      ${item('⏱','Lik spilletid, helt automatisk',
-        'Den som har stått lengst på banen byttes ut først. Benken er en kø – fremst går inn først. Over kampen ender alle med like mange minutter.')}
-      ${item('🔄','Alle innom alle posisjoner',
+      ${item('⏱','Jevnere spilletid med byttekø',
+        'Den som har stått lengst på banen byttes ut først. Benken er en kø – fremst går inn først. Køen fordeler utespilletiden så jevnt som mulig. Keepervalg, kampens lengde og manuelle bytter kan gi forskjeller.')}
+      ${item('🔄','Variasjon i posisjoner',
         'Innbytteren settes i posisjonen hun har spilt <b>minst</b>. Av og til flyttes en medspiller («Ida → Spiss») for at kabalen skal gå opp.')}
       ${item('🧤','Keeper velger du selv',
-        'Keeper er utenfor rotasjonen. I pausen foreslår appen den som har minst keepertid – og pauseklokka viser tiden dere har til oppvarming.')}
+        '3er har ingen keeper. I øvrige spillformer er keeper utenfor rotasjonen. I pausen foreslår appen den som har minst keepertid – og pauseklokka viser tiden dere har til oppvarming.')}
       ${item('🌱','Ny spiller = ro',
-        'Uerfarne spillere står i samme posisjon (maks to) hele kampen. De har nok med seg selv.')}
+        'Appen prioriterer en kjent posisjon for uerfarne spillere. Flere spillere med samme ønske kan gjøre et posisjonsbytte nødvendig.')}
       ${item('⭐','Favorittposisjon = glimtplassen',
-        'Brukes bare i siste periode: da får spillere favorittposisjonen sin når de byttes inn.')}
+        'Brukes bare i siste periode: da prioriteres ønsket posisjon når spilleren byttes inn, hvis den er ledig.')}
       ${item('🔔','Når det piper',
         'Trykk «Utfør bytte» ved neste døde ball – eller «Utsett 1 min». Antall spillere per bytte justerer du under klokka.')}
       ${item('🚑','Skade og slitne bein',
@@ -1077,24 +1152,32 @@ function showHelp(){
         'Trykk på to spillere for å bytte dem om manuelt – appen regner om resten av planen selv.')}
       ${item('📋','Etter kampen',
         'Rapporten kommer opp av seg selv: ett skjermbilde til laglederne, eller «Kopier tekst» rett inn i Spond.')}
-      <p class="hint">Alt lagres kun på denne telefonen – ingenting om spillerne sendes noe sted.</p>
+      <p class="hint">Spillernavn og statistikk lagres kun på telefonen. Med pushvarsler aktivert sendes enhetens pushabonnement og varseltider til serveren, uten spillernavn.</p>
       <button class="ghost" onclick="closeModal()">Lukk</button>
     </div></div>`;
 }
 
 /* ================= modal / utils ================= */
 function showModal(html){
-  $('#modalhost').innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`;
+  $('#modalhost').innerHTML=`<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal" role="dialog" aria-modal="true" aria-label="Kampvalg">${html}</div></div>`;
 }
 function closeModal(){ $('#modalhost').innerHTML=''; }
+document.addEventListener('keydown',event=>{if(event.key==='Escape') closeModal();});
 function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 /* alerts: sound + vibration + flash */
 let audioCtx=null;
-function initAudio(){ try{ if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)(); if(audioCtx.state==='suspended') audioCtx.resume(); }catch(e){} }
+async function initAudio(){
+  if(!alertPrefs().sound) return false;
+  try{
+    if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state!=='running') await audioCtx.resume();
+    return audioCtx.state==='running';
+  }catch(e){ return false; }
+}
 function beep(){
   try{
-    if(!audioCtx) return;
+    if(!alertPrefs().sound || audioCtx?.state!=='running') return;
     [0,0.3].forEach(off=>{
       const o=audioCtx.createOscillator(), g=audioCtx.createGain();
       o.frequency.value=880; o.type='sine';
@@ -1106,26 +1189,235 @@ function beep(){
     });
   }catch(e){}
 }
-function alertUser(){
+function alertUser(title='Byttetid',body='Åpne Bytteplan for å se kampen.'){
   beep();
+  if(alertPrefs().notifications && (!db.pushDevice||pushState==='error')) void showSystemNotification(title,body);
   try{ navigator.vibrate && navigator.vibrate([250,120,250]); }catch(e){}
   const f=$('#flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
 }
 
-/* wake lock: keep screen on during match */
-let wakeLock=null;
-async function requestWakeLock(){
-  try{ if('wakeLock' in navigator) wakeLock=await navigator.wakeLock.request('screen'); }catch(e){}
+/* Local alerts require a running page; permission is not a background scheduler. */
+let alertMessage='', notificationBusy=false, notificationEpoch=0;
+function alertPrefs(){
+  if(!db.alerts) db.alerts={sound:true,keepAwake:true,notifications:false};
+  return db.alerts;
 }
-function releaseWakeLock(){ try{ wakeLock&&wakeLock.release(); wakeLock=null; }catch(e){} }
+function notificationSupported(){
+  return window.isSecureContext && typeof Notification!=='undefined' && 'serviceWorker' in navigator;
+}
+function notificationStateText(){
+  if(!notificationSupported()) return 'Systemvarsler er ikke tilgjengelige her. På iPhone/iPad: legg Bytteplan til på Hjem-skjermen og åpne appen derfra. Bruk HTTPS eller localhost.';
+  if(Notification.permission==='denied') return 'Varsler er blokkert. Du kan endre tillatelsen i nettleserens eller telefonens innstillinger.';
+  if(Notification.permission==='granted') return alertPrefs().notifications?'Varseltillatelse er gitt. Test at pushvarselet kommer fram.':'Tillatelse er gitt, men systemvarsler er slått av i Bytteplan.';
+  return 'Valgfritt: tillat varsler i telefonens varslingssenter.';
+}
+function alertSettingsHtml(){
+  const a=alertPrefs();
+  return `<div class="card"><h2 style="margin-top:0">Lyd og varsler før avspark</h2>
+    <p class="hint">Klokka oppdateres når du låser opp telefonen. Slå på pushvarsler for byttetid, periodeslutt og pauseslutt også når telefonen er låst. Nett og telefoninnstillinger kan forsinke varsler.</p>
+    <label class="row"><input type="checkbox" ${a.keepAwake?'checked':''} onchange="setAlertPref('keepAwake',this.checked)"> Hold skjermen våken under kampen</label>
+    <p class="hint">${'wakeLock' in navigator?'Virker mens appen er synlig. Manuell låsing og strømsparing kan stoppe dette.':'Denne nettleseren støtter ikke skjermlås-funksjonen. Juster automatisk skjermlås på telefonen ved behov.'}</p>
+    <label class="row"><input type="checkbox" ${a.sound?'checked':''} onchange="setAlertPref('sound',this.checked)"> Lyd når det er byttetid</label>
+    <button class="ghost big" style="margin-top:10px" onclick="testAlertSound()">Test lyd</button>
+    <p class="hint">Skru opp volumet. Lydtesten gjelder når appen er åpen; den gir ikke tilgang til å spille lyd på låst telefon.</p>
+    <p class="hint">${notificationStateText()}</p>
+    <div class="row"><button class="grow" onclick="enableNotifications()" ${!notificationSupported()||notificationBusy||(typeof Notification!=='undefined'&&Notification.permission==='denied')?'disabled':''}>${notificationBusy?'Venter på tillatelse …':a.notifications?'Test pushvarsel':'Tillat og test pushvarsler'}</button>
+    ${a.notifications||db.pushDevice?`<button class="ghost" onclick="setAlertPref('notifications',false)">Slå av</button>`:''}</div>
+    <p class="hint">Pushvarsler krever nett. Telefonen bestemmer varsellyd og følger lydløs-/Fokus-innstillinger. Ved aktivering lagres enhetens pushabonnement og varseltidene på serveren. Ingen spillernavn sendes.</p>
+    <p class="hint" role="status">${esc(alertMessage)}</p><p class="hint" id="push-status" role="status">${pushStatusText()}</p>
+  </div>`;
+}
+function refreshAlertSettings(){ const el=$('#alert-settings'); if(el) el.innerHTML=alertSettingsHtml(); updateWakeStatus(); }
+function setAlertPref(key,value){
+  alertPrefs()[key]=value; save();
+  if(key==='keepAwake'){ if(value) requestWakeLock(); else releaseWakeLock(); }
+  if(key==='notifications'&&!value){clearMatchNotifications(); void disconnectPush();}
+  if(key==='sound'&&value) void initAudio();
+  refreshAlertSettings();
+}
+async function testAlertSound(){
+  alertPrefs().sound=true; save();
+  const ready=await initAudio();
+  if(ready) beep();
+  alertMessage=ready?'Testlyden er sendt. Hørte du to pip? Sjekk volumet hvis ikke.':'Kunne ikke starte lyd. Prøv igjen med appen åpen.';
+  refreshAlertSettings();
+}
+async function enableNotifications(){
+  if(!notificationSupported()||notificationBusy) return;
+  notificationBusy=true;
+  try{
+    // Invoke synchronously from the button gesture, before awaiting SW readiness.
+    const permission=Notification.permission==='default'?await Notification.requestPermission():Notification.permission;
+    alertPrefs().notifications=permission==='granted'; save();
+    if(permission==='granted') await connectPush();
+    else alertMessage='Varsler ble ikke slått på. Du kan fortsatt bruke kampen med appen åpen.';
+  }catch(e){ pushState='error'; alertMessage='Kunne ikke koble til pushserveren. Kontroller nett, åpne appen fra Hjem-skjermen og prøv igjen. Pushvarsler krever at du bruker appen på adressen der pushserveren er satt opp.'; }
+  finally{ notificationBusy=false; refreshAlertSettings(); }
+}
+async function showSystemNotification(title,body,test=false){
+  if(!notificationSupported()||Notification.permission!=='granted'||!alertPrefs().notifications) return false;
+  const epoch=notificationEpoch;
+  try{
+    const registration=await navigator.serviceWorker.getRegistration();
+    if(!registration?.active) throw new Error('Service worker not active');
+    if(epoch!==notificationEpoch||!alertPrefs().notifications) return false;
+    await registration.showNotification(title,{
+      body,icon:'icon-192.png',tag:test?'bytteplan-test':'bytteplan-match',
+      renotify:true,silent:!alertPrefs().sound,
+      data:{url:registration.scope}
+    });
+    if(test) alertMessage='Testvarsel sendt. Sjekk varslingssenteret; telefonen bestemmer om lyd spilles.';
+    return true;
+  }catch(e){
+    alertMessage='Systemvarselet kunne ikke sendes. Last inn appen på nytt og prøv testen igjen.';
+    refreshAlertSettings(); return false;
+  }
+}
+async function clearMatchNotifications(){
+  notificationEpoch++;
+  try{
+    if(!('serviceWorker' in navigator)) return;
+    const reg=await navigator.serviceWorker.getRegistration();
+    const list=await reg?.getNotifications({tag:'bytteplan-match'});
+    list?.forEach(n=>n.close());
+  }catch(e){}
+}
+
+/* Server schedules only the next substitution and the current period/break.
+   Every change replaces the schedule with a monotonically increasing revision. */
+let pushState='off', pushSyncedSignature=null, pushInFlight=false, pushAgain=false, pushRetryAt=0;
+function pushStatusText(){
+  if(pushState==='error'&&!alertPrefs().notifications) return 'Deaktivering er ikke bekreftet · gamle varsler kan fortsatt komme';
+  if(typeof Notification!=='undefined'&&Notification.permission==='denied') return 'Varsler er blokkert på telefonen · åpne innstillinger for å tillate dem';
+  if(!alertPrefs().notifications) return 'Pushvarsler er av · bruk appen åpen for byttevarsler';
+  if(pushState==='error') return 'Varselplanen er ikke bekreftet · behold appen åpen. Tidligere varsler kan fortsatt komme.';
+  if(!db.pushDevice) return 'Push er ikke tilkoblet · test og aktiver før avspark';
+  if(pushState==='syncing') return 'Oppdaterer varseltider … vent før du låser telefonen';
+  return pushState==='ready'?'Varselplanen er lagret på serveren · nett og telefoninnstillinger påvirker levering':'Kobler til pushserveren …';
+}
+function updatePushStatus(){const el=$('#push-status');if(el)el.textContent=pushStatusText();}
+function pushPlan(){
+  const m=db.match;
+  if(!alertPrefs().notifications||!m||m.finished)return [];
+  const id=kind=>`${m.startedAt}:${m.period}:${kind}`;
+  if(m.awaitingPeriod)return m.breakEndsAt>Date.now()?[{id:id('break'),kind:'break',at:Math.round(m.breakEndsAt)}]:[];
+  if(!m.running)return [];
+  const anchor=m.lastTickAt??Date.now();
+  const end=Math.round(anchor+(periodLength(m)-m.clockSec)*1000);
+  const sub=Math.round(anchor+(m.lastSubTotal+m.intervalSec+m.snoozeSec-m.totalSec)*1000);
+  const events=[];
+  if(sub<end&&sub>Date.now()-60000)events.push({id:id('sub')+':'+(m.lastSubTotal+m.intervalSec+m.snoozeSec),kind:'sub',at:sub});
+  events.push({id:id('end'),kind:m.period===m.periods?'end':'period',at:end});
+  if(m.period<m.periods)events.push({id:id('break'),kind:'break',at:end+(m.breakSec??300)*1000});
+  return events.filter(e=>e.at>Date.now()-60000);
+}
+async function pushRequest(path,method='GET',data,authenticated=false){
+  const response=await fetch('/api/push/'+path,{
+    method,cache:'no-store',credentials:'same-origin',keepalive:method!=='GET',
+    headers:{'Content-Type':'application/json',...(authenticated?{Authorization:'Bearer '+db.pushDevice.token}:{})},
+    ...(data===undefined?{}:{body:JSON.stringify(data)}),signal:AbortSignal.timeout(12000)
+  });
+  if(!response.ok){const error=new Error('Push request failed');error.status=response.status;throw error;}
+  return response.json();
+}
+async function connectPush(){
+  const config=await pushRequest('config');
+  const reg=await navigator.serviceWorker.getRegistration();
+  if(!reg?.active)throw new Error('Reload to activate service worker');
+  const raw=atob(config.publicKey.replace(/-/g,'+').replace(/_/g,'/'));
+  const key=Uint8Array.from(raw,c=>c.charCodeAt(0));
+  let subscription=await reg.pushManager.getSubscription();
+  if(!subscription)subscription=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
+  if(!db.pushDevice){
+    db.pushDevice=await pushRequest('register','POST',{subscription:subscription.toJSON()});
+    // Persist the capability before any schedule can be created.
+    localStorage.setItem(LS_KEY,JSON.stringify(db));
+  }
+  try{await pushRequest('devices/'+db.pushDevice.id+'/test','POST',{},true);}
+  catch(error){
+    if(error.status!==401&&error.status!==410)throw error;
+    // Expired server record/subscription: obtain a fresh endpoint and capability.
+    await subscription.unsubscribe();
+    subscription=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
+    db.pushDevice=await pushRequest('register','POST',{subscription:subscription.toJSON()});
+    localStorage.setItem(LS_KEY,JSON.stringify(db));
+    await pushRequest('devices/'+db.pushDevice.id+'/test','POST',{},true);
+  }
+  alertMessage='Push-test sendt fra serveren. Sjekk varslingssenteret. Telefonen bestemmer om lyd spilles.';
+  pushSyncedSignature=null;pushRetryAt=0;await queuePushSync();
+}
+async function disconnectPush(){
+  if(!db.pushDevice)return;
+  try{
+    await pushRequest('devices/'+db.pushDevice.id,'DELETE',{},true);
+    const reg=await navigator.serviceWorker.getRegistration();
+    await (await reg?.pushManager.getSubscription())?.unsubscribe();
+    db.pushDevice=null;pushState='off';pushSyncedSignature=null;save();
+    alertMessage='Pushabonnement og planlagte varsler er slettet fra serveren.';
+  }catch(e){pushState='error';alertMessage='Kunne ikke slette pushabonnementet. Tidligere varsler kan fortsatt komme. Prøv Slå av igjen når du har nett.';}
+  refreshAlertSettings();
+}
+async function queuePushSync(){
+  if(!db.pushDevice)return;
+  const events=pushPlan();
+  const signature=JSON.stringify({events,silent:!alertPrefs().sound});
+  if(signature===pushSyncedSignature||Date.now()<pushRetryAt)return;
+  if(pushInFlight){pushAgain=true;return;}
+  pushInFlight=true;pushState='syncing';updatePushStatus();
+  const device=db.pushDevice;
+  try{
+    const revision=++device.revision;
+    localStorage.setItem(LS_KEY,JSON.stringify(db));
+    await pushRequest('devices/'+device.id,'PUT',{revision,events,silent:!alertPrefs().sound},true);
+    if(db.pushDevice===device){pushSyncedSignature=signature;pushState='ready';pushRetryAt=0;}
+  }catch(e){if(db.pushDevice===device){pushState='error';pushRetryAt=Date.now()+5000;}}
+  finally{pushInFlight=false;updatePushStatus();if(pushAgain){pushAgain=false;void queuePushSync();}}
+}
+window.addEventListener('online',()=>{pushRetryAt=0;void queuePushSync();});
+setInterval(()=>{void queuePushSync();},5000);
+
+/* Wake lock prevents automatic locking only while visible; never manual locking. */
+let wakeLock=null, wakePending=false, wakeEpoch=0, wakeFailure=false;
+function needsWakeLock(){ return alertPrefs().keepAwake && db.match && !db.match.finished && (db.match.running||db.match.awaitingPeriod); }
+function wakeStatusText(){
+  if(!alertPrefs().keepAwake) return 'Skjermen kan låses automatisk · varsler kan utebli ved låsing';
+  if(wakeLock&&!wakeLock.released) return 'Skjermen holdes våken · behold appen åpen';
+  if(!('wakeLock' in navigator)||wakeFailure) return 'Kan ikke holde skjermen våken · hold telefonen ulåst for varsler';
+  return needsWakeLock()?'Skjermen holdes ikke våken nå · behold appen åpen':'Klokka er pauset · skjermen kan låses';
+}
+function updateWakeStatus(){ const el=$('#awake-status'); if(el) el.textContent=wakeStatusText(); }
+async function requestWakeLock(){
+  if(!needsWakeLock()||document.visibilityState!=='visible'||!('wakeLock' in navigator)||wakeLock||wakePending) return;
+  wakePending=true; const epoch=wakeEpoch;
+  try{
+    const lock=await navigator.wakeLock.request('screen');
+    if(epoch!==wakeEpoch||!needsWakeLock()||document.visibilityState!=='visible'){ await lock.release(); return; }
+    wakeLock=lock; wakeFailure=false;
+    lock.addEventListener('release',()=>{if(wakeLock===lock) wakeLock=null; updateWakeStatus();});
+  }catch(e){ wakeFailure=true; }
+  finally{ wakePending=false; updateWakeStatus(); }
+}
+function releaseWakeLock(){
+  wakeEpoch++; const lock=wakeLock; wakeLock=null;
+  if(lock) void lock.release().catch(()=>{});
+  updateWakeStatus();
+}
+window.addEventListener('pagehide',()=>{ tick(); save(); });
 document.addEventListener('visibilitychange',()=>{
+  tick(); save();
+  refreshAlertSettings();
   if(document.visibilityState==='visible' && db.match && (db.match.running || db.match.awaitingPeriod)) requestWakeLock();
 });
 
 /* service worker for offline use */
-if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+  navigator.serviceWorker.addEventListener('message',event=>{if(event.data?.type==='OPEN_MATCH'){tick();go('kamp');}});
+}
 
+tick();
 render();
+if(needsWakeLock()) void requestWakeLock();
 </script>
 </body>
 </html>
